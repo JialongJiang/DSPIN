@@ -393,3 +393,86 @@ def onmf_discretize(onmf_rep_ori, fig_folder):
         plt.savefig(fig_folder + 'onmf_discretize.png', dpi=300, bbox_inches='tight')
         
     return onmf_rep_tri, rec_kmeans
+
+from scipy.sparse import issparse
+def prepare_onmf_decomposition(cadata, data_folder, balance_by='leiden', total_sample_size=1e5, method='squareroot'):
+    
+    if issparse(cadata.X):
+        cadata.X = cadata.X.toarray()
+
+    maximum_sample_rate = 2
+    cluster_list = list(cadata.obs[balance_by].value_counts().keys())
+    cluster_count = list(cadata.obs[balance_by].value_counts())
+
+    if method == 'porpotional':
+        weight_fun = cluster_count
+    elif method == 'squareroot':
+        esti_size = (np.sqrt(cluster_count) / np.sum(np.sqrt(cluster_count)) * total_sample_size).astype(int)
+        weight_fun = np.min([esti_size, maximum_sample_rate * np.array(cluster_count)], axis=0)
+    elif method == 'equal':
+        esti_size = total_sample_size / len(cluster_list)
+        weight_fun = np.min([esti_size * np.ones(len(cluster_count)), maximum_sample_rate * np.array(cluster_count)], axis=0)
+    sampling_number = (weight_fun / np.sum(weight_fun) * total_sample_size).astype(int)
+
+    gene_matrix_balanced = np.zeros((np.sum(sampling_number), cadata.X.shape[1]))
+
+    for ii in tqdm(range(len(cluster_list))):
+        cur_num = sampling_number[ii]
+        cur_filt = cadata.obs[balance_by] == cluster_list[ii]
+        sele_ind = np.random.choice(np.sum(cur_filt), cur_num)
+        strart_ind = np.sum(sampling_number[:ii])
+        end_ind = strart_ind + cur_num
+        gene_matrix_balanced[strart_ind: end_ind, :] = cadata.X[cur_filt, :][sele_ind, :]
+
+    matrix_path = data_folder + 'gmatrix_' + '{:.0e}'.format(total_sample_size) + '_balanced_' + method + '.npy'
+    np.save(matrix_path, gene_matrix_balanced)
+
+    return matrix_path
+
+def select_diverse_sample(raw_data_tri, num_cluster, fig_folder):
+
+    num_spin = raw_data_tri[0][0].shape[1]
+    num_samp = len(raw_data_tri)
+    raw_data_cat_vec = np.zeros([num_samp, int(num_spin * (num_spin + 3) / 2)])
+    ind1, ind2 = np.triu_indices(num_spin)
+
+    for ii in range(num_samp):
+        cur_corrmean = raw_data_tri[ii]
+        triu_vect = cur_corrmean[0][ind1, ind2] / np.sqrt((num_spin + 1) / 2)
+        triu_vect = np.concatenate([triu_vect, cur_corrmean[1].flatten()])
+        raw_data_cat_vec[ii, :] = triu_vect
+
+    from sklearn.decomposition import PCA
+
+    pca_all = PCA().fit(raw_data_cat_vec)
+    pca_rep = pca_all.transform(raw_data_cat_vec)
+    kmeans = KMeans(n_clusters=num_cluster, n_init=200)
+    kmeans.fit(raw_data_cat_vec)
+
+    use_data_list = []
+    for ii in range(num_cluster):
+        cur_data = np.where(kmeans.labels_ == ii)[0]
+
+        cur_center = kmeans.cluster_centers_[ii, :]
+        data_dist = np.linalg.norm(raw_data_cat_vec[cur_data, :] - cur_center, axis=1)
+        data_select = cur_data[np.argmin(data_dist)]
+
+        use_data_list.append(data_select)
+    
+    
+    sc.set_figure_params(figsize=[3, 3])
+    fig, grid = sc.pl._tools._panel_grid(0.2, 0.2, ncols=3, num_panels=9)
+
+    for ii in range(3):
+        for jj in range(ii + 1):
+            ax = plt.subplot(grid[ii * 3 + jj])
+            plt.scatter(pca_rep[use_data_list, ii + 1], pca_rep[use_data_list, jj], s=90, color='#aaaaaa')
+            plt.scatter(pca_rep[:, ii + 1], pca_rep[:, jj], s=20, c=kmeans.labels_, cmap='tab20', alpha=0.5)
+            plt.xlabel('PC' + str(ii + 2))
+            plt.ylabel('PC' + str(jj + 1))
+            plt.xticks([])
+            plt.yticks([])
+
+    plt.savefig(fig_folder + 'pca_cluster.png', dpi=300, bbox_inches='tight')
+
+    return use_data_list
