@@ -1,5 +1,5 @@
 # DSPIN
-Code and example of the D-SPIN framework 
+Code and examples of the D-SPIN framework 
 
 ## General workflow of D-SPIN
 
