@@ -10,7 +10,7 @@ num_samp = size(cdata, 2);
 
 load([task_name_res, '/network.mat'])
 
-num_epoch = 100; 
+num_epoch = 500; 
 h_all = zeros(num_spin, num_samp); 
 all_hgrad_norm = zeros(num_samp, num_epoch); 
 
