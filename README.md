@@ -1,6 +1,8 @@
 # DSPIN
 Code and examples of the D-SPIN framework 
 
+![alternativetext](/figure/readme/Figure1_20230309_Inna.png)
+
 ## General workflow of D-SPIN
 
 ### Identifying gene or gene programs to use 
