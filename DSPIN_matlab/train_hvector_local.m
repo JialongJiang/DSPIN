@@ -1,7 +1,7 @@
 data_dir = '../data/'; 
 task_name = 'thomsonlab_signaling';
 
-sampling_sz = 5e4; % 1e7; 
+sampling_sz = 5e6; % 1e7; 
 
 task_name_res = [data_dir, task_name, '/dspin/'];
 [ ~, ~ ] = mkdir(task_name_res); 
