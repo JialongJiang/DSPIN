@@ -31,8 +31,6 @@ D-SPIN uses cross-correlation and mean of each perturbation condition to inferre
 
 The inferred regulatory network and perturbations can be jointly analyzed to reveal how perturbations act in the context of the regulatory network.
 
-![alternativetext](/figure/thomsonlab_signaling/regulatory_network_modules.png)
-
 ![alternativetext](/figure/thomsonlab_signaling/joint_network_perturbation.png)
 
 ## References
