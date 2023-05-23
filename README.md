@@ -17,6 +17,12 @@ The second demo reconstructs regulatory network and response vector in a single-
 
 ## General workflow of D-SPIN
 
+For detailed decription of the framework and hyperparameter choice in the model, please refer to the preprint.
+
+D-SPIN takes single-cell sequencing data of multiple perturbation conditions. In the second demo, PBMCs are treated with different signaling molecules such as CD3 antibody, LPS, IL1B, and TGFB1
+
+![alternativetext](/figure/thomsonlab_signaling/example_conditions.png)
+
 ### Identifying gene or gene programs to use 
 
 ### Computing cross-correlation and mean of each perturbation condition
