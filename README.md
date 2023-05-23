@@ -23,13 +23,17 @@ D-SPIN takes single-cell sequencing data of multiple perturbation conditions. In
 
 ![alternativetext](/figure/thomsonlab_signaling/example_conditions.png)
 
-### Identifying gene or gene programs to use 
+D-SPIN identifies a set of gene programs that coexpress in the data, and represent each cell as a combination of gene program expression states. 
 
-### Computing cross-correlation and mean of each perturbation condition
+![alternativetext](/figure/thomsonlab_signaling/gene_program_example.png)
 
-### Inferring the network with paraellized optimization procedure
+D-SPIN uses cross-correlation and mean of each perturbation condition to inferred a unified regulatory network and the response vector of each perturbation condition. The inference can be parallelized across perturbation conditions. The inference code is in Matlab using "parfor", while for demo purpose Python code (without parallelization) is provided.
 
-### Computing each perturbation response vectors under the network
+The inferred regulatory network and perturbations can be jointly analyzed to reveal how perturbations act in the context of the regulatory network.
+
+![alternativetext](/figure/thomsonlab_signaling/regulatory_network_modules.png)
+
+![alternativetext](/figure/thomsonlab_signaling/joint_network_perturbation.png)
 
 ## References
 
