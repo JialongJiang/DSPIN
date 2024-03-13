@@ -1,0 +1,24 @@
+Metadata-Version: 2.1
+Name: dspin
+Version: 0.1.1
+Summary: Short description of dspin
+Home-page: https://github.com/YingyGong/dspin
+Download-URL: https://github.com/YingyGong/dspin/archive/v0.1.1.tar.gz
+Author: Your Name
+Author-email: your.email@example.com
+License: Your chosen license
+Keywords: keyword1,keyword2
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Requires-Python: >=3.6
+License-File: LICENSE
+Requires-Dist: anndata
+Requires-Dist: matplotlib
+Requires-Dist: scanpy
+Requires-Dist: tqdm
+Requires-Dist: igraph
+Requires-Dist: leidenalg
+
+## Just Test for installation# dspin_package
