@@ -21,39 +21,44 @@ install_requires = [
 # ]
 
 # Managing your version (adjust accordingly)
-version = "0.1.1"  # You can manage versioning in a more sophisticated way if needed
+version = "1.0.2"  # You can manage versioning in a more sophisticated way if needed
 
 # Long description (usually a README file)
-readme = open("README.md").read()  # Adjust the file name if necessary
+readme = open("README_PyPI.md").read()  # Adjust the file name if necessary
 
 setup(
     name="dspin",
     version=version,
-    description="Short description of dspin",
-    author="Your Name",
-    author_email="your.email@example.com",
+    description="Python implementation of 'D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response'",
+    author="Jialong Jiang",
+    author_email="jiangjl@caltech.edu",
     packages=find_packages(),
-    license="Your chosen license",
+    license="Apache-2.0 license",
     python_requires=">=3.6",  # Adjust depending on your compatibility
     install_requires=install_requires,
     # extras_require={"test": test_requires, "doc": doc_requires},
     test_suite="nose2.collector.collector",  # Adjust if you're using a different test suite
     long_description=readme,
-    url="https://github.com/YingyGong/dspin",  # Replace with your repository URL
-    download_url="https://github.com/YingyGong/dspin/archive/v{}.tar.gz".format(
-        version
-    ),
+    long_description_content_type="text/markdown",
+    url="https://github.com/JialongJiang/DSPIN",  # Replace with your repository URL
+    # download_url="https://github.com/JialongJiang/DSPIN/archive/v{}.tar.gz".format(version),
     keywords=[
-        "keyword1",
-        "keyword2",
+        "network inference",
+        "single cell",
+        "transcriptomics"
         # Add more relevant keywords
     ],
     classifiers=[
         # Update classifiers to match your project
         "Development Status :: 4 - Beta",
-        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "License :: OSI Approved :: Apache Software License",
+        "Topic :: Scientific/Engineering :: Bio-Informatics",
+        "Topic :: Scientific/Engineering :: Information Analysis",
+        "Topic :: Scientific/Engineering :: Physics",
         # Add more classifiers as relevant
     ],
 )

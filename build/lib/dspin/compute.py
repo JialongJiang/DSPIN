@@ -71,9 +71,15 @@ def category_balance_number(
         total_sample_size).astype(int)
     return sampling_number
 
+from sklearn.cluster import AgglomerativeClustering
+import leidenalg as la
+import igraph as ig
+import networkx as nx
+
 
 def summary_components(all_components: np.array,
                        num_spin: int,
+                       num_repeat: int, 
                        summary_method: str = 'kmeans') -> List[np.array]:
     '''
     Summarize components using KMeans clustering algorithm.
@@ -118,11 +124,39 @@ def summary_components(all_components: np.array,
         for ii in range(num_spin):
             # Find which genes belong to which cluster
             gene_groups_ind.append(np.argmax(components_kmeans, axis=0) == ii)
+    
+    elif summary_method == 'leiden':
+
+        consensus = np.einsum('ij,ik->jk', all_components, all_components) / num_repeat
+        consensus_filt = np.where(np.max(consensus, axis=0) > np.percentile(consensus.flatten(), 99))[0]
+        consensus_sub = consensus[:, consensus_filt][consensus_filt]
+
+        clusterer = AgglomerativeClustering(n_clusters=num_spin, metric='precomputed', linkage='complete')
+        cluster_labels = clusterer.fit_predict(np.sqrt(- np.log(consensus_sub)))
+
+        G = nx.from_numpy_array(consensus)
+        G = ig.Graph.from_networkx(G)
+
+        optimiser = la.Optimiser()
+        membership = np.ones(consensus.shape[0]) * (1 + max(cluster_labels))
+        membership[consensus_filt] = cluster_labels
+        membership_fixed = np.zeros(consensus.shape[0])
+        membership_fixed[consensus_filt] = 1
+
+        membership = membership.astype(int)
+        membership_fixed = membership_fixed.astype(int)
+
+        partition = la.RBConfigurationVertexPartition(G, initial_membership=membership, weights='weight')
+        diff = optimiser.optimise_partition(partition, n_iterations=- 1, is_membership_fixed=list(membership_fixed))
+
+        gene_groups_ind = []
+        for ii, part in enumerate(partition):
+            gene_groups_ind.append(part)
 
     return gene_groups_ind
 
 
-def onmf(X: np.array, rank: int, max_iter: int = 100) -> (np.array, np.array):
+def onmf(X: np.array, rank: int, max_iter: int = 200) -> (np.array, np.array):
     """
     Orthogonal Non-Negative Matrix Factorization (ONMF) for a given rank.
 
@@ -694,3 +728,30 @@ def learn_network_adam(raw_data, method, train_dat):
     cur_j = rec_jmat_all[pos, :, :]
 
     return cur_j, cur_h
+
+def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_batch):
+
+    samp_list = list(samp_list)
+
+    relative_responses = np.zeros_like(cur_h)
+    control_samples = [sample for sample, is_control in dict_samp_control.items() if is_control]
+
+    global_control_avg = np.mean(cur_h[:, [samp_list.index(samp) for samp in control_samples]], axis=1)
+
+    # Iterate over each sample
+    for index, sample in enumerate(samp_list):
+        batch = dict_samp_batch[sample]
+
+        # Find control samples in the same batch
+        batch_control_samples = [samp for samp, batch in dict_samp_batch.items() if batch == batch and dict_samp_control.get(samp, True)]
+
+        # If there are controls in the batch, use their average
+        if batch_control_samples:
+            batch_control_indices = [samp_list.index(s) for s in batch_control_samples]
+            batch_control_avg = np.mean(cur_h[:, batch_control_indices], axis=1)
+            relative_responses[:, index] = cur_h[:, index] - batch_control_avg
+        else:
+            # Handle the case where there are no controls at all
+            relative_responses[:, index] = cur_h[:, index] - global_control_avg
+
+    return relative_responses

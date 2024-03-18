@@ -9,8 +9,6 @@ __pycache__/compute.cpython-37.pyc
 __pycache__/dspin_abstract.cpython-310.pyc
 __pycache__/plot.cpython-310.pyc
 __pycache__/plotting.cpython-37.pyc
-dist/dspin-0.0.2-py3-none-any.whl
-dist/dspin-0.0.2.tar.gz
 dspin/__init__.py
 dspin/compute.py
 dspin/dspin_abstract.py
