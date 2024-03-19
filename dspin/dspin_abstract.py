@@ -195,19 +195,19 @@ class AbstractDSPIN(ABC):
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path}
-        params.update({'lambda_l1_j': 0.01,
+        params.update({'lambda_l1_j': 0.001,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
-                       'lambda_l2_h': 0.05,
+                       'lambda_l2_h': 0.005,
                        'lambda_prior_h': 0})
         params.update({'backtrack_gap': 20,
                        'backtrack_tol': 4})
 
         if method == 'maximum_likelihood':
-            params['stepsz'] = 0.1
+            params['stepsz'] = 0.2
         elif method == 'mcmc_maximum_likelihood':
             params['stepsz'] = 0.01
-            params['mcmc_samplingsz'] = 2e5
+            params['mcmc_samplingsz'] = 5e5
             params['mcmc_samplingmix'] = 1e3
             params['mcmc_samplegap'] = 1
         else:
@@ -249,7 +249,7 @@ class AbstractDSPIN(ABC):
 
         if method == 'auto':
             if example_list is not None:
-                if len(example_list) > 10:
+                if len(example_list) > 30:
                     method = 'pseudo_likelihood'
             else:
                 samp_list = np.unique(self.adata.obs[sample_col_name])
@@ -300,7 +300,7 @@ class AbstractDSPIN(ABC):
                 unique_sample_batch = unique_sample_batch.loc[self.samp_list]
                 sample_batch_dict = unique_sample_batch['batch'].to_dict()
         
-        self._relative_responses = compute_relative_responses(self._responses, self.samp_list, sample_to_control_dict, sample_batch_dict)
+            self._relative_responses = compute_relative_responses(self._responses, self.samp_list, sample_to_control_dict, sample_batch_dict)
 
 
 class GeneDSPIN(AbstractDSPIN):
