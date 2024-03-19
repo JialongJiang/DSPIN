@@ -87,7 +87,7 @@ def summary_components(all_components: np.array,
     Parameters:
     all_components (np.array): A 2D array where each row represents a sample, and each column represents a feature.
     num_spin (int): The number of clusters.
-    summary_method (str, optional): The method used for summarizing the components. Defaults to 'kmeans'.
+    summary_method (str, optional): The method used for summarizing the components. Can use 'kmeans' or 'leiden' Defaults to 'kmeans'.
 
     Returns:
     List[np.array]: A list of numpy arrays, each containing the indices of the genes that belong to a specific group or cluster.
@@ -131,9 +131,11 @@ def summary_components(all_components: np.array,
         consensus_filt = np.where(np.max(consensus, axis=0) > np.percentile(consensus.flatten(), 99))[0]
         consensus_sub = consensus[:, consensus_filt][consensus_filt]
 
+        # Perform Agglomerative Clustering on consensus matrix
         clusterer = AgglomerativeClustering(n_clusters=num_spin, metric='precomputed', linkage='complete')
         cluster_labels = clusterer.fit_predict(np.sqrt(- np.log(consensus_sub)))
 
+        # Convert to graph and apply Leiden algorithm
         G = nx.from_numpy_array(consensus)
         G = ig.Graph.from_networkx(G)
 
@@ -730,7 +732,19 @@ def learn_network_adam(raw_data, method, train_dat):
     return cur_j, cur_h
 
 def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_batch):
-
+    """
+    Compute the relative responses of samples by subtracting the average of control samples.
+    This function calculates the relative responses for a set of samples by comparing each sample's response 
+    to the average response of control samples. The control samples can be specific to the batch a sample belongs to, 
+    or a global set of control samples if no control samples are present in the batch.
+    Parameters:
+    cur_h (numpy.ndarray): A 2D array where each column represents a sample and each row represents a feature.
+    samp_list (iterable): A list or iterable of sample identifiers.
+    dict_samp_control (dict): A dictionary mapping sample identifiers to a boolean indicating if the sample is a control.
+    dict_samp_batch (dict): A dictionary mapping sample identifiers to their respective batch identifiers.
+    Returns:
+    numpy.ndarray: A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
+    """
     samp_list = list(samp_list)
 
     relative_responses = np.zeros_like(cur_h)

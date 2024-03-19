@@ -60,7 +60,7 @@ class AbstractDSPIN(ABC):
         Calculate and return the correlation of raw data.
     default_params(method)
         Provide the default parameters for the specified algorithm.
-    network_infer(sample_col_name, method, params, example_list, record_step)
+    network_inference(sample_col_name, method, params, example_list, record_step)
         Execute the network inference using the specified method and parameters and record the results.
     """
 
@@ -215,7 +215,7 @@ class AbstractDSPIN(ABC):
 
         return params
 
-    def network_infer(self,
+    def network_inference(self,
                       sample_col_name: str = 'sample_id',
                       control_col_name: str = None, 
                       batch_col_name: str = None,
