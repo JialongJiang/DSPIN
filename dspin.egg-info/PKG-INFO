@@ -1,7 +1,7 @@
 Metadata-Version: 2.1
 Name: dspin
-Version: 1.0.2
-Summary: Python implementation of 'D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response'
+Version: 1.0.3
+Summary: Regulatory network models from single-cell perturbation profiling
 Home-page: https://github.com/JialongJiang/DSPIN
 Author: Jialong Jiang
 Author-email: jiangjl@caltech.edu

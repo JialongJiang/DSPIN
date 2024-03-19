@@ -21,7 +21,7 @@ install_requires = [
 # ]
 
 # Managing your version (adjust accordingly)
-version = "1.0.2"  # You can manage versioning in a more sophisticated way if needed
+version = "1.0.3"  # You can manage versioning in a more sophisticated way if needed
 
 # Long description (usually a README file)
 readme = open("README_PyPI.md").read()  # Adjust the file name if necessary
@@ -29,7 +29,7 @@ readme = open("README_PyPI.md").read()  # Adjust the file name if necessary
 setup(
     name="dspin",
     version=version,
-    description="Python implementation of 'D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response'",
+    description="Regulatory network models from single-cell perturbation profiling",
     author="Jialong Jiang",
     author_email="jiangjl@caltech.edu",
     packages=find_packages(),
