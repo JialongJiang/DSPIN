@@ -195,7 +195,7 @@ class AbstractDSPIN(ABC):
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path}
-        params.update({'lambda_l1_j': 0.001,
+        params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
                        'lambda_l2_h': 0.005,
@@ -207,7 +207,7 @@ class AbstractDSPIN(ABC):
             params['stepsz'] = 0.2
         elif method == 'mcmc_maximum_likelihood':
             params['stepsz'] = 0.02
-            params['mcmc_samplingsz'] = 5e6
+            params['mcmc_samplingsz'] = 2e5
             params['mcmc_samplingmix'] = 1e3
             params['mcmc_samplegap'] = 1
         elif method == 'pseudo_likelihood':
@@ -474,6 +474,7 @@ class ProgramDSPIN(AbstractDSPIN):
 
         preprograms = self.prior_programs
         adata = self.adata
+        
         # Create the directory for saving ONMF decompositions if it doesn't
         # exist
         os.makedirs(self.save_path + 'onmf/', exist_ok=True)
@@ -574,6 +575,7 @@ class ProgramDSPIN(AbstractDSPIN):
                                num_subsample: int = 10000,
                                num_subsample_large: int = None,
                                num_repeat: int = 10,
+                               seed: int = 0,
                                balance_obs: str = None,
                                balance_method: str = None,
                                max_sample_rate: float = 2,
@@ -648,6 +650,7 @@ class ProgramDSPIN(AbstractDSPIN):
         self.prior_programs_mask = prior_program_mask
         self.prior_programs_ind = prior_program_ind
 
+        np.random.seed(seed)
         # Perform subsampling and standard deviation clipping on the matrix
         self.matrix_std, self.large_subsample_matrix = self.subsample_matrix_balance(
             num_subsample_large, std_clip_percentile=20)
@@ -657,6 +660,7 @@ class ProgramDSPIN(AbstractDSPIN):
             num_onmf_components,
             num_repeat,
             num_subsample,
+            seed,
             std_clip_percentile=20)
 
         # Summarize the ONMF decompositions

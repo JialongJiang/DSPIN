@@ -138,6 +138,7 @@ def summary_components(all_components: np.array,
         # Convert to graph and apply Leiden algorithm
         G = nx.from_numpy_array(consensus)
         G = ig.Graph.from_networkx(G)
+        np.random.seed(0)
 
         optimiser = la.Optimiser()
         membership = np.ones(consensus.shape[0]) * (1 + max(cluster_labels))
@@ -456,7 +457,7 @@ def pseudol_gradient(cur_j, cur_h, cur_state):
     return -cur_j_grad, -cur_h_grad
 
 
-# @numba.njit()
+@numba.njit()
 def samp_moments(j_mat, h_vec, sample_size, mixing_time, samp_gap):
     """
     Sample moments for the Markov Chain Monte Carlo (MCMC).
