@@ -206,11 +206,11 @@ class AbstractDSPIN(ABC):
         if method == 'maximum_likelihood':
             params['stepsz'] = 0.2
         elif method == 'mcmc_maximum_likelihood':
-            params['stepsz'] = 0.01
-            params['mcmc_samplingsz'] = 5e5
+            params['stepsz'] = 0.02
+            params['mcmc_samplingsz'] = 5e6
             params['mcmc_samplingmix'] = 1e3
             params['mcmc_samplegap'] = 1
-        else:
+        elif method == 'pseudo_likelihood':
             params['stepsz'] = 0.05
 
         return params
@@ -247,21 +247,20 @@ class AbstractDSPIN(ABC):
             raise ValueError(
                 "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood', or 'auto'.")
 
-        if method == 'auto':
+        if method == 'auto':           
+            samp_list = np.unique(self.adata.obs[sample_col_name])
+            num_sample = len(samp_list)
             if example_list is not None:
-                if len(example_list) > 30:
-                    method = 'pseudo_likelihood'
+                num_sample = len(example_list)
+            if num_sample > 30:
+                method = 'pseudo_likelihood'
             else:
-                samp_list = np.unique(self.adata.obs[sample_col_name])
-                if len(samp_list) > 10:
-                    method = 'pseudo_likelihood'
+                if self.num_spin <= 12:
+                    method = 'maximum_likelihood'
+                elif self.num_spin <= 25:
+                    method = 'mcmc_maximum_likelihood'
                 else:
-                    if self.num_spin <= 12:
-                        method = 'maximum_likelihood'
-                    elif self.num_spin <= 25:
-                        method = 'mcmc_maximum_likelihood'
-                    else:
-                        method = 'pseudo_likelihood'
+                    method = 'pseudo_likelihood'
 
         print("Using {} for network inference.".format(method))
 
@@ -579,7 +578,7 @@ class ProgramDSPIN(AbstractDSPIN):
                                balance_method: str = None,
                                max_sample_rate: float = 2,
                                prior_programs: List[List[str]] = None,
-                               summary_method: str = 'kmeans',):
+                               summary_method: str = 'kmeans'):
         """
         Discovers gene programs by performing ONMF decomposition on the given annotated data object.
 
