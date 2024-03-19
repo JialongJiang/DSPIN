@@ -87,7 +87,7 @@ def summary_components(all_components: np.array,
     Parameters:
     all_components (np.array): A 2D array where each row represents a sample, and each column represents a feature.
     num_spin (int): The number of clusters.
-    summary_method (str, optional): The method used for summarizing the components. Can use 'kmeans' or 'leiden' Defaults to 'kmeans'.
+    summary_method (str, optional): The method used for summarizing the components. Can use 'kmeans' or 'leiden'. Defaults to 'kmeans'.
 
     Returns:
     List[np.array]: A list of numpy arrays, each containing the indices of the genes that belong to a specific group or cluster.
@@ -271,6 +271,7 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str) -> np.array:
 
     # Save the visual representation
     if fig_folder:
+        print('Saving the example state partition figure to ' + fig_folder + 'onmf_discretize.png')
         plt.savefig(f'{fig_folder}onmf_discretize.png', bbox_inches='tight')
         plt.close()
 
