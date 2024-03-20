@@ -119,6 +119,10 @@ class AbstractDSPIN(ABC):
     def responses(self, value):
         self._responses = value
 
+    @relative_responses.setter
+    def relative_responses(self, value):
+        self._relative_responses = value
+
     def discretize(self) -> np.ndarray:
         """
         Discretizes the ONMF representation into three states (-1, 0, 1) using K-means clustering.
@@ -289,7 +293,7 @@ class AbstractDSPIN(ABC):
             self._network = cur_j
             self._responses = cur_h
 
-    def relative_responses(self, 
+    def response_relative_to_control(self, 
                            control_col_name: str, 
                            batch_col_name: str = None):
         """
