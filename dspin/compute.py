@@ -800,6 +800,7 @@ def select_representative_sample(raw_data, num_select):
     """
     Select representative samples by performing KMeans clustering on the samples'
     correlation and mean vectors and selecting the sample closest to the cluster center.
+    
     Parameters:
     raw_data (list): A list of correlation and mean vectors for each sample.
     num_select (int): The number of representative samples to select.

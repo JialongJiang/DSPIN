@@ -88,7 +88,7 @@ class AbstractDSPIN(ABC):
         os.makedirs(self.fig_folder, exist_ok=True)
 
     @property
-    def onmf_rep_ori(self):
+    def program_representation(self):
         return self._onmf_rep_ori
 
     @property
@@ -106,9 +106,13 @@ class AbstractDSPIN(ABC):
     @property
     def responses(self):
         return self._responses
+    
+    @property
+    def relative_responses(self):
+        return self._relative_responses
 
-    @onmf_rep_ori.setter
-    def onmf_rep_ori(self, value):
+    @program_representation.setter
+    def program_representation(self, value):
         self._onmf_rep_ori = value
 
     @network.setter
@@ -240,6 +244,8 @@ class AbstractDSPIN(ABC):
         ValueError: If an invalid method is specified.
         """
 
+        self.sample_col_name = sample_col_name
+
         if method not in [
             'maximum_likelihood',
             'mcmc_maximum_likelihood',
@@ -306,7 +312,7 @@ class AbstractDSPIN(ABC):
 
         assert(np.sum(self.adata.obs[control_col_name]) > 0)
 
-        unique_sample_control = self.adata.obs[['sample_id', control_col_name]].drop_duplicates().set_index('sample_id')
+        unique_sample_control = self.adata.obs[[self.sample_col_name, control_col_name]].drop_duplicates().set_index(self.sample_col_name)
         # only remain samples in self.samp_list
         unique_sample_control = unique_sample_control.loc[self.samp_list]
         sample_to_control_dict = unique_sample_control[control_col_name].to_dict()
@@ -315,9 +321,9 @@ class AbstractDSPIN(ABC):
             sample_batch_dict = {sample: 0 for sample in self.samp_list}
         else:
 
-            unique_sample_batch = self.adata.obs[['sample_id', 'batch']].drop_duplicates().set_index('sample_id')
+            unique_sample_batch = self.adata.obs[[self.sample_col_name, batch_col_name]].drop_duplicates().set_index(self.sample_col_name)
             unique_sample_batch = unique_sample_batch.loc[self.samp_list]
-            sample_batch_dict = unique_sample_batch['batch'].to_dict()
+            sample_batch_dict = unique_sample_batch[batch_col_name].to_dict()
     
         self._relative_responses = compute_relative_responses(self._responses, self.samp_list, sample_to_control_dict, sample_batch_dict)
 
