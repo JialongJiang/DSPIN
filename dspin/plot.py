@@ -17,6 +17,8 @@ import scanpy as sc
 import igraph as ig
 import leidenalg as la
 import networkx as nx
+from scipy import optimize
+from scipy.spatial.distance import pdist
 
 
 def onmf_to_csv(features, gene_name, file_path, thres=0.01):
@@ -56,9 +58,6 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
 
     return file_path
 
-
-from scipy import optimize
-from scipy.spatial.distance import pdist
 def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
     """
     Assign the position of gene programs on the UMAP plot.
@@ -75,7 +74,7 @@ def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
     num_spin = onmf_rep_ori.shape[1]
     program_umap_pos = np.zeros([num_spin, 2])
     for ii in range(num_spin):
-        weight_sub = onmf_rep_ori[:, ii]
+        weight_sub = onmf_rep_ori[:, ii].copy()
         weight_sub[weight_sub < np.percentile(weight_sub, 99.5)] = 0
         program_umap_pos[ii, :] = np.sum(umap_all * weight_sub.reshape(- 1, 1) / np.sum(weight_sub), axis=0)
 
@@ -103,6 +102,45 @@ def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
 
     return program_umap_pos
 
+def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, subsample=True):
+    """
+    Plot gene programs on the UMAP plot.
+
+    Args:
+    onmf_rep (numpy.ndarray): The gene or gene program representation of the transformed data.
+    umap_all (numpy.ndarray): The UMAP coordinates of all cells.
+    program_umap_pos (numpy.ndarray): The assigned positions of gene programs on the UMAP plot.
+    fig_folder (str): The folder where the output figure is saved.
+    subsample (bool): Whether to subsample the data for plotting.
+    """
+
+    num_spin = onmf_rep.shape[1]
+
+    if subsample:
+        num_subsample = 20000
+        sub_ind = np.random.choice(onmf_rep.shape[0], num_subsample, replace=False)
+        onmf_rep = onmf_rep[sub_ind, :]
+        umap_all = umap_all[sub_ind, :]
+
+    sc.set_figure_params(figsize=[2, 2])
+    fig, grid = sc.pl._tools._panel_grid(0.2, 0.06, ncols=6, num_panels=num_spin)
+    for spin in range(num_spin):
+        ax = plt.subplot(grid[spin])
+
+        plot_data = onmf_rep[:, spin].copy()
+        plot_data /= np.percentile(plot_data, 95)
+        plot_data = plot_data.clip(0, 3)
+
+        plt.scatter(umap_all[:, 0], umap_all[:, 1], c=plot_data, s=1, 
+        alpha=0.5, vmax=1.2, cmap='BuPu', vmin=-0.1)
+        plt.text(program_umap_pos[spin, 0], program_umap_pos[spin, 1], str(spin), fontsize=12, path_effects=[PathEffects.withStroke(linewidth=3, foreground='w')])
+        ax.set_aspect('equal')
+        plt.xticks([])
+        plt.yticks([])
+        plt.title(spin)
+
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'gene_program_on_umap.png', dpi=300, bbox_inches='tight')
 
 def gene_program_decomposition(onmf_summary,
                                num_spin,
@@ -375,7 +413,6 @@ def adjust_label_position(pos, offset=0.1):
             coordinates[0] + np.cos(theta) * offset,
             coordinates[1] + np.sin(theta) * offset)
     return adjusted_pos
-
 
 def plot_final(
         cur_j,
