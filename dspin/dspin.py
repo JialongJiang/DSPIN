@@ -134,7 +134,7 @@ class AbstractDSPIN(ABC):
         Returns:
         - np.ndarray: The discretized ONMF representation.
         """
-        onmf_rep_ori = self.onmf_rep_ori
+        onmf_rep_ori = self.program_representation
         fig_folder = self.fig_folder
 
         onmf_rep_tri = onmf_discretize(onmf_rep_ori, fig_folder)

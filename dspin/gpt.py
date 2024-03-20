@@ -3,7 +3,7 @@ import csv
 import pandas as pd
 from typing import List
 
-system_question = "Your are a desperate biology phd student studying gene expression from a dataset of cancer patients. Given following a list of genes in the gene program, you have two tasks: \
+system_question = "Your are a desperate biology phd professor studying gene expression from a dataset of cancer patients. Given following a list of genes in the gene program, you have two tasks: \
     Firstly, summarize functions of the program in a few important functions. \
         Secondly, give a higher-level name of the gene program based on its function. You are required by your mentor to name it as short as possible.\
             You get 100 score if you can name it in two or three words, 80 score if you can name it in four words, 20 score for five or more words. \

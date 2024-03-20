@@ -780,10 +780,10 @@ def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_ba
 
     # Iterate over each sample
     for index, sample in enumerate(samp_list):
-        batch = dict_samp_batch[sample]
+        cur_batch = dict_samp_batch[sample]
 
         # Find control samples in the same batch
-        batch_control_samples = [samp for samp, batch in dict_samp_batch.items() if batch == batch and dict_samp_control.get(samp, True)]
+        batch_control_samples = [samp for samp, batch in dict_samp_batch.items() if batch == cur_batch and dict_samp_control.get(samp, True)]
 
         # If there are controls in the batch, use their average
         if batch_control_samples:

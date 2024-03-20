@@ -133,7 +133,7 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
 
         plt.scatter(umap_all[:, 0], umap_all[:, 1], c=plot_data, s=1, 
         alpha=0.5, vmax=1.2, cmap='BuPu', vmin=-0.1)
-        plt.text(program_umap_pos[spin, 0], program_umap_pos[spin, 1], str(spin), fontsize=12, path_effects=[PathEffects.withStroke(linewidth=3, foreground='w')])
+        plt.text(program_umap_pos[spin, 0], program_umap_pos[spin, 1], str(spin), fontsize=12, path_effects=[patheffects.withStroke(linewidth=3, foreground='w')])
         ax.set_aspect('equal')
         plt.xticks([])
         plt.yticks([])
