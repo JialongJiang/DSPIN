@@ -138,6 +138,7 @@ def summary_components(all_components: np.array,
         # Convert to graph and apply Leiden algorithm
         G = nx.from_numpy_array(consensus)
         G = ig.Graph.from_networkx(G)
+        np.random.seed(0)
 
         optimiser = la.Optimiser()
         membership = np.ones(consensus.shape[0]) * (1 + max(cluster_labels))
@@ -486,22 +487,44 @@ def samp_moments(j_mat, h_vec, sample_size, mixing_time, samp_gap):
     rand_flip = np.random.randint(0, 2, tot_sampling)
     rand_prob = np.random.rand(tot_sampling)
 
-    # Monte Carlo Sampling
+    # Monte Carlo Sampling with Gibbs sampling
     for ii in range(tot_sampling):
         cur_ind = rand_ind[ii]
-        # Perform flips and accepts/rejects new states according to Metropolis
-        # rule
         j_sub = j_mat[cur_ind, :]
-        # Compute acceptance probability and execute possible spin flips
-        # Collecting samples
-        if ii > mixing_time and (ii - mixing_time) % samp_gap == 0:
-            rec_sample[:, batch_count - 1] = cur_spin[:, 0].copy()
-            batch_count += 1
-            if batch_count == per_batch + 1:
-                batch_count = 1
-                rec_sample = np.ascontiguousarray(rec_sample)
-                rec_corr += rec_sample.dot(rec_sample.T)
-                rec_mean += np.sum(rec_sample, axis=1)
+        accept_prob = 0.0
+        new_spin = 0.0
+        diff_energy = 0.0
+
+        if cur_spin[cur_ind] == 0:
+            if rand_flip[ii] == 0:
+                new_spin = 1.0
+            else:
+                new_spin = -1.0
+            diff_energy = -j_mat[cur_ind, cur_ind] - new_spin * (j_sub.dot(cur_spin) + h_vec[cur_ind])
+            accept_prob = min(1.0, np.exp(- diff_energy * beta)[0])
+        else:
+            if rand_flip[ii] == 0:
+                accept_prob = 0;
+            else:
+                diff_energy = cur_spin[cur_ind] * (j_sub.dot(cur_spin) + h_vec[cur_ind])
+                accept_prob = min(1.0, np.exp(- diff_energy * beta)[0])
+
+        if rand_prob[ii] < accept_prob:
+            if cur_spin[cur_ind] == 0:
+                cur_spin[cur_ind] = new_spin
+            else:
+                cur_spin[cur_ind] = 0
+
+        if ii > mixing_time:
+            if (ii - mixing_time) % samp_gap == 0:
+                rec_sample[:, batch_count - 1] = cur_spin[:, 0].copy()
+                batch_count += 1
+
+                if batch_count == per_batch + 1:
+                    batch_count = 1
+                    rec_sample = np.ascontiguousarray(rec_sample)
+                    rec_corr += rec_sample.dot(rec_sample.T)
+                    rec_mean += np.sum(rec_sample, axis=1)
 
     # Final processing of collected samples
     if batch_count != 1:

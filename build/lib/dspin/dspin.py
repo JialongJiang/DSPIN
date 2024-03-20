@@ -195,7 +195,7 @@ class AbstractDSPIN(ABC):
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path}
-        params.update({'lambda_l1_j': 0.001,
+        params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
                        'lambda_l2_h': 0.005,
@@ -206,11 +206,11 @@ class AbstractDSPIN(ABC):
         if method == 'maximum_likelihood':
             params['stepsz'] = 0.2
         elif method == 'mcmc_maximum_likelihood':
-            params['stepsz'] = 0.01
-            params['mcmc_samplingsz'] = 5e5
+            params['stepsz'] = 0.02
+            params['mcmc_samplingsz'] = 2e5
             params['mcmc_samplingmix'] = 1e3
             params['mcmc_samplegap'] = 1
-        else:
+        elif method == 'pseudo_likelihood':
             params['stepsz'] = 0.05
 
         return params
@@ -247,21 +247,20 @@ class AbstractDSPIN(ABC):
             raise ValueError(
                 "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood', or 'auto'.")
 
-        if method == 'auto':
+        if method == 'auto':           
+            samp_list = np.unique(self.adata.obs[sample_col_name])
+            num_sample = len(samp_list)
             if example_list is not None:
-                if len(example_list) > 30:
-                    method = 'pseudo_likelihood'
+                num_sample = len(example_list)
+            if num_sample > 30:
+                method = 'pseudo_likelihood'
             else:
-                samp_list = np.unique(self.adata.obs[sample_col_name])
-                if len(samp_list) > 10:
-                    method = 'pseudo_likelihood'
+                if self.num_spin <= 12:
+                    method = 'maximum_likelihood'
+                elif self.num_spin <= 25:
+                    method = 'mcmc_maximum_likelihood'
                 else:
-                    if self.num_spin <= 12:
-                        method = 'maximum_likelihood'
-                    elif self.num_spin <= 25:
-                        method = 'mcmc_maximum_likelihood'
-                    else:
-                        method = 'pseudo_likelihood'
+                    method = 'pseudo_likelihood'
 
         print("Using {} for network inference.".format(method))
 
@@ -475,6 +474,7 @@ class ProgramDSPIN(AbstractDSPIN):
 
         preprograms = self.prior_programs
         adata = self.adata
+        
         # Create the directory for saving ONMF decompositions if it doesn't
         # exist
         os.makedirs(self.save_path + 'onmf/', exist_ok=True)
@@ -575,11 +575,12 @@ class ProgramDSPIN(AbstractDSPIN):
                                num_subsample: int = 10000,
                                num_subsample_large: int = None,
                                num_repeat: int = 10,
+                               seed: int = 0,
                                balance_obs: str = None,
                                balance_method: str = None,
                                max_sample_rate: float = 2,
                                prior_programs: List[List[str]] = None,
-                               summary_method: str = 'kmeans',):
+                               summary_method: str = 'kmeans'):
         """
         Discovers gene programs by performing ONMF decomposition on the given annotated data object.
 
@@ -649,6 +650,7 @@ class ProgramDSPIN(AbstractDSPIN):
         self.prior_programs_mask = prior_program_mask
         self.prior_programs_ind = prior_program_ind
 
+        np.random.seed(seed)
         # Perform subsampling and standard deviation clipping on the matrix
         self.matrix_std, self.large_subsample_matrix = self.subsample_matrix_balance(
             num_subsample_large, std_clip_percentile=20)
@@ -658,6 +660,7 @@ class ProgramDSPIN(AbstractDSPIN):
             num_onmf_components,
             num_repeat,
             num_subsample,
+            seed,
             std_clip_percentile=20)
 
         # Summarize the ONMF decompositions
