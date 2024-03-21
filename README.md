@@ -12,8 +12,19 @@ The python code can be installed with
 
 `pip install dspin`
 
-
 The Matlab code can be downloaded from the folder "DSPIN_matlab", and directly executable in Matlab after specifying the path to the data. 
+
+## Demos
+
+Two demos of D-SPIN are available on Google Colab. 
+
+The first demo reconstructs the regulatory network of simulated hematopoietic stem cell (HSC) differentiation network with perturbations using the BEELINE framework (Pratapa, Aditya, et al. Nature methods, 2020). 
+
+[Demo1](https://colab.research.google.com/drive/1mjJ09_E9kjEYsGCzf10-aZfuOqHUEV5u?usp=sharing)
+
+The second demo reconstructs regulatory network and response vector in a single-cell dataset collected in the ThomsonLab.In the dataset, human peripheral blood mononuclear cells (PBMCs) were treated with various signaling molecules with different dosages. 
+
+[Demo2](https://colab.research.google.com/drive/1U2WbmKvai3Y_-vlLV0SY1dv1LHdFjg2w?usp=sharing)
 
 ## Dependencies
 
@@ -115,19 +126,6 @@ D-SPIN uses cross-correlation and mean of each perturbation condition to inferre
 The inferred regulatory network and perturbations can be jointly analyzed to reveal how perturbations act in the context of the regulatory network.
 
 ![alternativetext](figure/thomsonlab_signaling/joint_network_perturbation.png)
-
-## Demos
-
-Two demos of D-SPIN are available on Google Colab. 
-
-The first demo reconstructs the regulatory network of simulated hematopoietic stem cell (HSC) differentiation network with perturbations using the BEELINE framework (Pratapa, Aditya, et al. Nature methods, 2020). 
-
-[Demo1](https://colab.research.google.com/drive/1mjJ09_E9kjEYsGCzf10-aZfuOqHUEV5u?usp=sharing)
-
-The second demo reconstructs regulatory network and response vector in a single-cell dataset collected in the ThomsonLab.In the dataset, human peripheral blood mononuclear cells (PBMCs) were treated with various signaling molecules with different dosages. 
-
-[Demo2](https://colab.research.google.com/drive/1U2WbmKvai3Y_-vlLV0SY1dv1LHdFjg2w?usp=sharing)
-
 
 ## References
 
