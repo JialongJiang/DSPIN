@@ -88,7 +88,7 @@ class AbstractDSPIN(ABC):
         os.makedirs(self.fig_folder, exist_ok=True)
 
     @property
-    def onmf_rep_ori(self):
+    def program_representation(self):
         return self._onmf_rep_ori
 
     @property
@@ -106,9 +106,13 @@ class AbstractDSPIN(ABC):
     @property
     def responses(self):
         return self._responses
+    
+    @property
+    def relative_responses(self):
+        return self._relative_responses
 
-    @onmf_rep_ori.setter
-    def onmf_rep_ori(self, value):
+    @program_representation.setter
+    def program_representation(self, value):
         self._onmf_rep_ori = value
 
     @network.setter
@@ -119,6 +123,10 @@ class AbstractDSPIN(ABC):
     def responses(self, value):
         self._responses = value
 
+    @relative_responses.setter
+    def relative_responses(self, value):
+        self._relative_responses = value
+
     def discretize(self) -> np.ndarray:
         """
         Discretizes the ONMF representation into three states (-1, 0, 1) using K-means clustering.
@@ -126,7 +134,7 @@ class AbstractDSPIN(ABC):
         Returns:
         - np.ndarray: The discretized ONMF representation.
         """
-        onmf_rep_ori = self.onmf_rep_ori
+        onmf_rep_ori = self.program_representation
         fig_folder = self.fig_folder
 
         onmf_rep_tri = onmf_discretize(onmf_rep_ori, fig_folder)
@@ -216,20 +224,17 @@ class AbstractDSPIN(ABC):
         return params
 
     def network_inference(self,
-                      sample_col_name: str = 'sample_id',
-                      control_col_name: str = None, 
-                      batch_col_name: str = None,
-                      method: str = 'auto',
-                      params: dict = None,
-                      example_list: List[str] = None,
-                      record_step: int = 10):
+                          sample_col_name: str = 'sample_id',
+                          method: str = 'auto',
+                          params: dict = None,
+                          example_list: List[str] = None,
+                          record_step: int = 10,
+                          run_with_matlab: bool = False):
         """
         Execute the network inference using the specified method and parameters and record the results.
 
         Parameters:
         sample_col_name (str): The name of the sample column.
-        batch_col_name (str, optional): The name of the batch column in adata, default is None.
-        control_col_name (str, optional): The name of the control column in adata, default is None.
         method (str, optional): The method used for network inference, default is 'auto'.
         params (dict, optional): Dictionary of parameters to be used, default is None.
         example_list (List[str], optional): List of examples to be used, default is None.
@@ -239,13 +244,16 @@ class AbstractDSPIN(ABC):
         ValueError: If an invalid method is specified.
         """
 
+        self.sample_col_name = sample_col_name
+
         if method not in [
             'maximum_likelihood',
             'mcmc_maximum_likelihood',
             'pseudo_likelihood',
+            'directed_pseudo_likelihood',
                 'auto']:
             raise ValueError(
-                "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood', or 'auto'.")
+                "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood', 'directed_pseudo_likelihood' or 'auto'.")
 
         if method == 'auto':           
             samp_list = np.unique(self.adata.obs[sample_col_name])
@@ -278,28 +286,46 @@ class AbstractDSPIN(ABC):
         if params is not None:
             train_dat.update(params)
 
-        cur_j, cur_h = learn_network_adam(self.raw_data, method, train_dat)
-        self._network = cur_j
-        self._responses = cur_h
+        if run_with_matlab:
+            if method in ['maximum_likelihood', 'mcmc_maximum_likelihood']:
+                file_path = self.save_path + 'raw_data.mat'
+            elif method in ['pseudo_likelihood', 'directed_pseudo_likelihood']:
+                file_path = self.save_path + 'raw_data_state.mat'
+            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self.samp_list})
+            print("Data saved to {}. Please run the network inference in MATLAB and load the results back.".format(file_path))
 
-        if control_col_name is not None:
+        else:
+            cur_j, cur_h = learn_network_adam(self.raw_data, method, train_dat)
+            self._network = cur_j
+            self._responses = cur_h
 
-            assert(np.sum(self.adata.obs[control_col_name]) > 0)
+    def response_relative_to_control(self, 
+                           control_col_name: str, 
+                           batch_col_name: str = None):
+        """
+        Compute the relative responses based on the control samples in each batch or all batches.
 
-            unique_sample_control = self.adata.obs[['sample_id', control_col_name]].drop_duplicates().set_index('sample_id')
-            # only remain samples in self.samp_list
-            unique_sample_control = unique_sample_control.loc[self.samp_list]
-            sample_to_control_dict = unique_sample_control[control_col_name].to_dict()
+        Parameters:
+        control_col_name (str, optional): The name of the control column in adata, default is None.
+        batch_col_name (str, optional): The name of the batch column in adata, default is None.
+        """
 
-            if batch_col_name is None:
-                sample_batch_dict = {sample: 0 for sample in self.samp_list}
-            else:
+        assert(np.sum(self.adata.obs[control_col_name]) > 0)
 
-                unique_sample_batch = self.adata.obs[['sample_id', 'batch']].drop_duplicates().set_index('sample_id')
-                unique_sample_batch = unique_sample_batch.loc[self.samp_list]
-                sample_batch_dict = unique_sample_batch['batch'].to_dict()
-        
-            self._relative_responses = compute_relative_responses(self._responses, self.samp_list, sample_to_control_dict, sample_batch_dict)
+        unique_sample_control = self.adata.obs[[self.sample_col_name, control_col_name]].drop_duplicates().set_index(self.sample_col_name)
+        # only remain samples in self.samp_list
+        unique_sample_control = unique_sample_control.loc[self.samp_list]
+        sample_to_control_dict = unique_sample_control[control_col_name].to_dict()
+
+        if batch_col_name is None:
+            sample_batch_dict = {sample: 0 for sample in self.samp_list}
+        else:
+
+            unique_sample_batch = self.adata.obs[[self.sample_col_name, batch_col_name]].drop_duplicates().set_index(self.sample_col_name)
+            unique_sample_batch = unique_sample_batch.loc[self.samp_list]
+            sample_batch_dict = unique_sample_batch[batch_col_name].to_dict()
+    
+        self._relative_responses = compute_relative_responses(self._responses, self.samp_list, sample_to_control_dict, sample_batch_dict)
 
 
 class GeneDSPIN(AbstractDSPIN):
@@ -678,6 +704,7 @@ class ProgramDSPIN(AbstractDSPIN):
                 num_onmf_components,
                 num_spin),
             thres=0.01)
+        print('Gene programs saved to {}'.format(file_path))
         self.gene_program_csv = file_path
 
         gene_matrix = self.adata.X
@@ -729,8 +756,13 @@ class DSPIN(object):
 
         # if the number of genes is less than the number of spins, use
         # GeneDSPIN
-        if adata.shape[1] <= num_spin:
+        if adata.shape[1] == num_spin:
             return GeneDSPIN(adata, save_path, num_spin=num_spin, **kwargs)
-        # otherwise, use ProgramDSPIN because ONMF is needed
+        elif adata.shape[1] < num_spin:
+            warnings.warn(
+                "Number of genes is less than the number of spins. Using number of genes as num_spin.")
+            num_spin = adata.shape[1]
+            return GeneDSPIN(adata, save_path, num_spin=num_spin, **kwargs)
+        # otherwise, use ProgramDSPIN because oNMF is needed
         else:
             return ProgramDSPIN(adata, save_path, num_spin=num_spin, **kwargs)

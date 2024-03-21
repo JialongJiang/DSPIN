@@ -8,7 +8,7 @@ from scipy.linalg import orth
 from collections import deque
 import numba
 from sklearn.preprocessing import normalize
-from sklearn.decomposition import NMF
+from sklearn.decomposition import NMF, PCA
 import numpy as np
 import matplotlib.pyplot as plt
 import scanpy as sc
@@ -487,7 +487,7 @@ def samp_moments(j_mat, h_vec, sample_size, mixing_time, samp_gap):
     rand_flip = np.random.randint(0, 2, tot_sampling)
     rand_prob = np.random.rand(tot_sampling)
 
-    # Monte Carlo Sampling with Gibbs sampling
+    # Monte Carlo Sampling
     for ii in range(tot_sampling):
         cur_ind = rand_ind[ii]
         j_sub = j_mat[cur_ind, :]
@@ -761,11 +761,13 @@ def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_ba
     This function calculates the relative responses for a set of samples by comparing each sample's response 
     to the average response of control samples. The control samples can be specific to the batch a sample belongs to, 
     or a global set of control samples if no control samples are present in the batch.
+
     Parameters:
     cur_h (numpy.ndarray): A 2D array where each column represents a sample and each row represents a feature.
     samp_list (iterable): A list or iterable of sample identifiers.
     dict_samp_control (dict): A dictionary mapping sample identifiers to a boolean indicating if the sample is a control.
     dict_samp_batch (dict): A dictionary mapping sample identifiers to their respective batch identifiers.
+
     Returns:
     numpy.ndarray: A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
     """
@@ -778,10 +780,10 @@ def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_ba
 
     # Iterate over each sample
     for index, sample in enumerate(samp_list):
-        batch = dict_samp_batch[sample]
+        cur_batch = dict_samp_batch[sample]
 
         # Find control samples in the same batch
-        batch_control_samples = [samp for samp, batch in dict_samp_batch.items() if batch == batch and dict_samp_control.get(samp, True)]
+        batch_control_samples = [samp for samp, batch in dict_samp_batch.items() if batch == cur_batch and dict_samp_control.get(samp, True)]
 
         # If there are controls in the batch, use their average
         if batch_control_samples:
@@ -793,3 +795,57 @@ def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_ba
             relative_responses[:, index] = cur_h[:, index] - global_control_avg
 
     return relative_responses
+
+def select_representative_sample(raw_data, num_select):
+    """
+    Select representative samples by performing KMeans clustering on the samples'
+    correlation and mean vectors and selecting the sample closest to the cluster center.
+    
+    Parameters:
+    raw_data (list): A list of correlation and mean vectors for each sample.
+    num_select (int): The number of representative samples to select.
+
+    Returns:
+    list: A list of indices of the selected representative samples.
+    """
+
+    num_spin = raw_data[0][0].shape[1]
+    num_samp = len(raw_data)
+    raw_data_cat_vec = np.zeros([num_samp, int(num_spin * (num_spin + 3) / 2)])
+    ind1, ind2 = np.triu_indices(num_spin)
+
+    for ii in range(num_samp):
+        cur_corrmean = raw_data[ii]
+        triu_vect = cur_corrmean[0][ind1, ind2] / np.sqrt((num_spin + 1) / 2)
+        triu_vect = np.concatenate([triu_vect, cur_corrmean[1].flatten()])
+        raw_data_cat_vec[ii, :] = triu_vect
+
+    pca_all = PCA().fit(raw_data_cat_vec)
+    pca_rep = pca_all.transform(raw_data_cat_vec)
+    kmeans = KMeans(n_clusters=num_select, n_init=200)
+    kmeans.fit(raw_data_cat_vec)
+
+    use_data_list = []
+    for ii in range(num_select):
+        cur_data = np.where(kmeans.labels_ == ii)[0]
+
+        cur_center = kmeans.cluster_centers_[ii, :]
+        data_dist = np.linalg.norm(raw_data_cat_vec[cur_data, :] - cur_center, axis=1)
+        data_select = cur_data[np.argmin(data_dist)]
+
+        use_data_list.append(data_select)
+        
+    sc.set_figure_params(figsize=[1, 1])
+    fig, grid = sc.pl._tools._panel_grid(0.2, 0.2, ncols=3, num_panels=9)
+
+    for ii in range(3):
+        for jj in range(ii + 1):
+            ax = plt.subplot(grid[ii * 3 + jj])
+            plt.scatter(pca_rep[use_data_list, ii + 1], pca_rep[use_data_list, jj], s=90, color='#aaaaaa')
+            plt.scatter(pca_rep[:, ii + 1], pca_rep[:, jj], s=20, c=kmeans.labels_, cmap='tab20', alpha=0.5)
+            plt.xlabel('PC' + str(ii + 2))
+            plt.ylabel('PC' + str(jj + 1))
+            plt.xticks([])
+            plt.yticks([])
+
+    return use_data_list

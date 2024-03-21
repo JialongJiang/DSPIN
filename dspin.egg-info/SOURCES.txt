@@ -13,7 +13,6 @@ dspin/__init__.py
 dspin/compute.py
 dspin/dspin.py
 dspin/gpt.py
-dspin/metadata_drug.py
 dspin/plot.py
 dspin.egg-info/PKG-INFO
 dspin.egg-info/SOURCES.txt
