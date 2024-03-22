@@ -26,7 +26,7 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
     Extract gene names in ONMF to CSV.
 
     Parameters:
-    features (numpy.ndarray): ONMF features to be written to CSV.
+    features (numpy.ndarray): oNMF features to be written to CSV.
     gene_name (List[str]): Names of the genes corresponding to feature indices.
     file_path (str): Path of the file where the CSV will be written.
     thres (float): Threshold value for filtering features.
@@ -57,6 +57,45 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
     pd_csv.to_csv(file_path, header=False, index=False)
 
     return file_path
+
+
+def onmf_gene_program_info(features, gene_name, num_gene_show, fig_folder=None):
+    """
+    Plot gene program compositions and weights from oNMF.
+
+    Parameters:
+    features (numpy.ndarray): oNMF features to be plotted.
+    gene_name (List[str]): Names of the genes corresponding to feature indices.
+    num_gene_show (int): Number of genes to show in the plot.
+    fig_folder (str): Folder where the figure will be saved.
+
+    Returns:
+    str: Path of the created figure.
+    """
+    thres = 0.01
+    num_spin = features.shape[0]
+    sc.set_figure_params(figsize=[1.5, 3.6])
+    fig, grid = sc.pl._tools._panel_grid(0.26, 0.9, ncols=6, num_panels=num_spin)
+
+    for spin in range(num_spin):
+        ax = plt.subplot(grid[spin])
+
+        cur_num_gene_show = min(num_gene_show, np.sum(features[spin, :] > thres))
+        gene_ind = np.argsort(- features[spin, :])[: cur_num_gene_show]
+        plt.plot(features[spin, gene_ind], np.arange(cur_num_gene_show), 'o')
+        plt.grid()
+        plt.xlim([0, 1.1 * np.max(features[spin, gene_ind])])
+        plt.ylim([-0.5, num_gene_show - 0.5])
+        plt.yticks(np.arange(cur_num_gene_show), gene_name[gene_ind], fontsize=9);
+        plt.gca().invert_yaxis()
+
+        plt.title(spin)
+
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'onmf_gene_program_info.png', dpi=300, bbox_inches='tight')
+
+    return(fig_folder + 'onmf_gene_program_info.png')
+
 
 def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
     """
@@ -112,6 +151,9 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
     program_umap_pos (numpy.ndarray): The assigned positions of gene programs on the UMAP plot.
     fig_folder (str): The folder where the output figure is saved.
     subsample (bool): Whether to subsample the data for plotting.
+
+    Returns:
+    str: Path of the created figure.
     """
 
     num_spin = onmf_rep.shape[1]
@@ -140,39 +182,37 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
         plt.title(spin)
 
     if fig_folder is not None:
-        plt.savefig(fig_folder + 'gene_program_on_umap.png', dpi=300, bbox_inches='tight')
+        plt.savefig(fig_folder + 'gene_program_on_umap.png', dpi=300, bbox_inches='tight')    
+        return fig_folder + 'gene_program_on_umap.png'
 
-def gene_program_decomposition(onmf_summary,
-                               num_spin,
-                               spin_name_extend,
-                               gene_matrix,
-                               onmf_rep_tri,
-                               fig_folder,
-                               num_gene_select: int = 10,
-                               n_clusters: int = 4):
-    """
-    Decompose gene programs and visualize gene expression and gene program expression.
 
+def visualize_program_expression(onmf_summary, spin_name, gene_matrix, onmf_rep_tri, fig_folder=None, 
+                                 num_gene_select=10, n_clusters=5, subsample=10000):
+    """ 
+    Heatmap comparisons between gene expression matrix and gene program representation.
+    
     Args:
-    - onmf_summary: The summary object from Online NMF decomposition.
-    - num_spin: The number of spins or gene programs.
-    - spin_name_extend: The extended names of spins or gene programs.
-    - gene_matrix: The matrix representing gene expression data.
-    - onmf_rep_tri: The matrix representation of the transformed data using Online NMF.
-    - fig_folder: The folder where the output figure is saved.
-    - num_gene_select: The number of genes to select, default is 10.
-    - n_clusters: The number of clusters for KMeans clustering, default is 4.
-    """
+    onmf_summary (sklearn.decomposition.NMF): The ONMF summary object.
+    spin_name (List[str]): The names of gene programs.
+    gene_matrix (numpy.ndarray): The gene expression matrix.
+    onmf_rep_tri (numpy.ndarray): The gene program representation.
+    fig_folder (str): The folder where the output figure is saved.
+    num_gene_select (int): The number of genes to be selected for each gene program. Default is 10.
+    n_clusters (int): The number of clusters for KMeans clustering. Default is 5.
+    subsample (int): The number cell subsampling for visualization. Default is 10000.
 
+    Returns:
+    str: Path of the created figure.
+    """
     # Extracting feature components from the ONMF summary object
     features = onmf_summary.components_
+    num_spin, num_gene = features.shape
 
-    # Identifying the gene modules by selecting the highest feature component
+    # Identifying the gene programs by selecting the highest feature component
     # for each gene
     gene_mod_ind = np.argmax(features, axis=0)
 
-    # For each spin, identifying the top selected genes and aggregating them
-    # into gene_mod_use
+    # For each spin, identifying the top selected genes and aggregating them into gene_mod_use
     gene_mod_use = []
     for ind in range(num_spin):
         gene_in_mod = np.where(gene_mod_ind == ind)[0]
@@ -183,18 +223,18 @@ def gene_program_decomposition(onmf_summary,
 
     # Creating a subset of cells and reordering them based on KMeans clustering
     np.random.seed(0)
-    subset_ind = np.random.choice(
-        range(
-            gene_matrix.shape[0]),
-        size=10000,
-        replace=False)
-    cell_order = np.argsort(
-        KMeans(n_clusters=n_clusters).fit_predict(onmf_rep_tri[subset_ind, :]))
-    gene_matrix_subset = gene_matrix[subset_ind, :][:, gene_mod_use]
-    gene_matrix_subset /= np.max(gene_matrix,
-                                 axis=0)[gene_mod_use].clip(0.2, np.inf)
+    
+    onmf_rep_subset = onmf_rep_tri
+    subset_ind = range(gene_matrix.shape[0])
+    if subsample:
+        if gene_matrix.shape[0] > subsample:
+            subset_ind = np.random.choice(range(gene_matrix.shape[0]), size=subsample, replace=False)
+            onmf_rep_subset = onmf_rep_tri[subset_ind, :]              
 
-    # Setting up figure parameters
+    cell_order = np.argsort(KMeans(n_clusters=n_clusters).fit_predict(onmf_rep_subset))
+    gene_matrix_subset = gene_matrix[subset_ind, :][:, gene_mod_use].copy()
+    gene_matrix_subset /= np.max(gene_matrix, axis=0)[gene_mod_use].clip(0.2, np.inf)
+
     sc.set_figure_params(figsize=[10, 5])
 
     # Plotting Gene Expression Subplot Before Decomposition
@@ -208,7 +248,7 @@ def gene_program_decomposition(onmf_summary,
 
     # Plotting Gene Program Expression Subplot After Decomposition
     plt.subplot(1, 2, 2)
-    plt.imshow(onmf_rep_tri[subset_ind, :][cell_order, :].T,
+    plt.imshow(onmf_rep_subset[cell_order, :].T,
                aspect='auto', cmap='Blues', interpolation='none')
     plt.yticks(range(num_spin), spin_name_extend, fontsize=12)
     plt.gca().yaxis.set_ticks_position('right')
@@ -216,11 +256,9 @@ def gene_program_decomposition(onmf_summary,
     plt.title('Gene program expression')
     plt.grid()
 
-    # Saving the plotted figure
-    plt.savefig(
-        fig_folder +
-        'gene_program_decomposition.png',
-        bbox_inches='tight')
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'gene_program_decomposition.png', bbox_inches='tight')
+        return fig_folder + 'gene_program_decomposition.png'
 
 def format_label(label):
     """

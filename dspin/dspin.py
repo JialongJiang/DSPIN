@@ -92,7 +92,7 @@ class AbstractDSPIN(ABC):
         return self._onmf_rep_ori
 
     @property
-    def onmf_rep_tri(self):
+    def program_discretized(self):
         return self._onmf_rep_tri
 
     @property
@@ -114,6 +114,10 @@ class AbstractDSPIN(ABC):
     @program_representation.setter
     def program_representation(self, value):
         self._onmf_rep_ori = value
+
+    @program_discretized.setter
+    def program_discretized(self, value):
+        self._onmf_rep_tri = value
 
     @network.setter
     def network(self, value):
@@ -149,7 +153,7 @@ class AbstractDSPIN(ABC):
         """
 
         raw_data, samp_list = sample_corr_mean(
-            self.adata.obs[sample_col_name], self.onmf_rep_tri)
+            self.adata.obs[sample_col_name], self._onmf_rep_tri)
         self._raw_data = raw_data
         self.samp_list = samp_list
 
@@ -164,14 +168,14 @@ class AbstractDSPIN(ABC):
         np.ndarray: Array representing the correlated raw data.
         """
         cadata = self.adata
-        onmf_rep_tri = self.onmf_rep_tri
+        onmf_rep_tri = self._onmf_rep_tri
 
         samp_list = np.unique(cadata.obs[sample_col_name])
         state_list = np.zeros(len(samp_list), dtype=object)
 
         for ii, cur_samp in enumerate(samp_list):
             cur_filt = cadata.obs[sample_col_name] == cur_samp
-            cur_state = self.onmf_rep_tri[cur_filt, :]
+            cur_state = self._onmf_rep_tri[cur_filt, :]
             state_list[ii] = cur_state.T
 
         self._raw_data = state_list
@@ -272,8 +276,6 @@ class AbstractDSPIN(ABC):
 
         print("Using {} for network inference.".format(method))
 
-        self.discretize()
-
         if method == 'pseudo_likelihood':
             self.raw_data_state(sample_col_name)
         else:
@@ -355,6 +357,8 @@ class GeneDSPIN(AbstractDSPIN):
         else:
             self._onmf_rep_ori = adata.X
 
+        self.discretize()
+
 
 class ProgramDSPIN(AbstractDSPIN):
     """
@@ -417,6 +421,14 @@ class ProgramDSPIN(AbstractDSPIN):
         self.gene_program_csv = None
         self.preprograms = None
         self.preprogram_num = len(preprograms) if preprograms else 0
+
+    @property
+    def onmf_decomposition(self):
+        return self._onmf_summary
+
+    @onmf_decomposition.setter
+    def onmf_decomposition(self, value):
+        self._onmf_summary = value
 
     def subsample_matrix_balance(self,
                                  total_sample_size: int,
@@ -714,6 +726,8 @@ class ProgramDSPIN(AbstractDSPIN):
         # normalize by standard deviation
         self._onmf_rep_ori = onmf_summary.transform(
             gene_matrix / self.matrix_std)
+
+        self.discretize()
 
 
 class DSPIN(object):
