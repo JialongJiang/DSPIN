@@ -250,7 +250,7 @@ def visualize_program_expression(onmf_summary, spin_name, gene_matrix, onmf_rep_
     plt.subplot(1, 2, 2)
     plt.imshow(onmf_rep_subset[cell_order, :].T,
                aspect='auto', cmap='Blues', interpolation='none')
-    plt.yticks(range(num_spin), spin_name_extend, fontsize=12)
+    plt.yticks(range(num_spin), spin_name, fontsize=12)
     plt.gca().yaxis.set_ticks_position('right')
     plt.xlabel('Cell')
     plt.title('Gene program expression')
