@@ -10,9 +10,9 @@ __pycache__/dspin_abstract.cpython-310.pyc
 __pycache__/plot.cpython-310.pyc
 __pycache__/plotting.cpython-37.pyc
 dspin/__init__.py
+dspin/annotate.py
 dspin/compute.py
 dspin/dspin.py
-dspin/gpt.py
 dspin/plot.py
 dspin.egg-info/PKG-INFO
 dspin.egg-info/SOURCES.txt
