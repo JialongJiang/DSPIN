@@ -301,31 +301,31 @@ def parse_david_output(termClusteringReport, save_path):
         save_path (str): The file path to save the parsed output.
     """
     totalRows = len(termClusteringReport)
-        print('Total clusters:', totalRows)
-        resF = save_path
-        with open(resF, 'w') as fOut:
-            i = 0
-            for simpleTermClusterRecord in termClusteringReport:
-                i = i+1
-                EnrichmentScore = simpleTermClusterRecord.score
-                fOut.write('Annotation Cluster '+str(i) + '\tEnrichmentScore:'+str(EnrichmentScore)+'\n')
-                fOut.write('Category\tTerm\tCount\t%\tPvalue\tGenes\tList Total\tPop Hits\tPop Total\tFold Enrichment\tBonferroni\tBenjamini\tFDR\n')
-                for simpleChartRecord in  simpleTermClusterRecord.simpleChartRecords:
-                        categoryName = simpleChartRecord.categoryName
-                        termName = simpleChartRecord.termName
-                        listHits = simpleChartRecord.listHits
-                        percent = simpleChartRecord.percent
-                        ease = simpleChartRecord.ease
-                        Genes = simpleChartRecord.geneIds
-                        listTotals = simpleChartRecord.listTotals
-                        popHits = simpleChartRecord.popHits
-                        popTotals = simpleChartRecord.popTotals
-                        foldEnrichment = simpleChartRecord.foldEnrichment
-                        bonferroni = simpleChartRecord.bonferroni
-                        benjamini = simpleChartRecord.benjamini
-                        FDR = simpleChartRecord.afdr
-                        rowList = [categoryName,termName,str(listHits),str(percent),str(ease),Genes,str(listTotals),str(popHits),str(popTotals),str(foldEnrichment),str(bonferroni),str(benjamini),str(FDR)]
-                        fOut.write('\t'.join(rowList)+'\n')
+    print('Total clusters:', totalRows)
+    resF = save_path
+    with open(resF, 'w') as fOut:
+        i = 0
+        for simpleTermClusterRecord in termClusteringReport:
+            i = i+1
+            EnrichmentScore = simpleTermClusterRecord.score
+            fOut.write('Annotation Cluster '+str(i) + '\tEnrichmentScore:'+str(EnrichmentScore)+'\n')
+            fOut.write('Category\tTerm\tCount\t%\tPvalue\tGenes\tList Total\tPop Hits\tPop Total\tFold Enrichment\tBonferroni\tBenjamini\tFDR\n')
+            for simpleChartRecord in  simpleTermClusterRecord.simpleChartRecords:
+                    categoryName = simpleChartRecord.categoryName
+                    termName = simpleChartRecord.termName
+                    listHits = simpleChartRecord.listHits
+                    percent = simpleChartRecord.percent
+                    ease = simpleChartRecord.ease
+                    Genes = simpleChartRecord.geneIds
+                    listTotals = simpleChartRecord.listTotals
+                    popHits = simpleChartRecord.popHits
+                    popTotals = simpleChartRecord.popTotals
+                    foldEnrichment = simpleChartRecord.foldEnrichment
+                    bonferroni = simpleChartRecord.bonferroni
+                    benjamini = simpleChartRecord.benjamini
+                    FDR = simpleChartRecord.afdr
+                    rowList = [categoryName,termName,str(listHits),str(percent),str(ease),Genes,str(listTotals),str(popHits),str(popTotals),str(foldEnrichment),str(bonferroni),str(benjamini),str(FDR)]
+                    fOut.write('\t'.join(rowList)+'\n')
 
 
 def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client):
