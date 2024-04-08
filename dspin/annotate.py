@@ -292,51 +292,40 @@ def setup_david_client(token_name):
     return client
 
 
-def parse_david_output(term_clustering_report, save_path):
+def parse_david_output(termClusteringReport, save_path):
     """
     Parse the output from DAVID and save to a file. 
 
     Parameters:
-        term_clustering_report: The term clustering report from DAVID Web Service.
+        termClusteringReport: The term clustering report from DAVID Web Service.
         save_path (str): The file path to save the parsed output.
     """
-    # Filter out None entries from the term clustering report
-    filtered_report = [
-        record for record in term_clustering_report if record is not None]
-
-    total_clusters = len(filtered_report)
-    print('Total clusters:', total_clusters)
-
-    with open(save_path, 'w') as f_out:
-        for i, cluster_record in enumerate(filtered_report, start=1):
-            # This line previously caused an AttributeError
-            enrichment_score = cluster_record.score
-            f_out.write(
-                f'Annotation Cluster {i}\tEnrichmentScore:{enrichment_score}\n')
-
-            headers = ['Category', 'Term', 'Count', '%', 'Pvalue', 'Genes', 'List Total',
-                       'Pop Hits', 'Pop Total', 'Fold Enrichment', 'Bonferroni', 'Benjamini', 'FDR']
-            f_out.write('\t'.join(headers) + '\n')
-
-            for chart_record in cluster_record.simpleChartRecords:
-                row = [
-                    chart_record.categoryName,
-                    chart_record.termName,
-                    str(chart_record.listHits),
-                    str(chart_record.percent),
-                    str(chart_record.ease),
-                    chart_record.geneIds,
-                    str(chart_record.listTotals),
-                    str(chart_record.popHits),
-                    str(chart_record.popTotals),
-                    str(chart_record.foldEnrichment),
-                    str(chart_record.bonferroni),
-                    str(chart_record.benjamini),
-                    str(chart_record.afdr)
-                ]
-                f_out.write('\t'.join(row) + '\n')
-
-# parse_david_output(term_clustering_report, 'output.txt')
+    totalRows = len(termClusteringReport)
+        print('Total clusters:', totalRows)
+        resF = save_path
+        with open(resF, 'w') as fOut:
+            i = 0
+            for simpleTermClusterRecord in termClusteringReport:
+                i = i+1
+                EnrichmentScore = simpleTermClusterRecord.score
+                fOut.write('Annotation Cluster '+str(i) + '\tEnrichmentScore:'+str(EnrichmentScore)+'\n')
+                fOut.write('Category\tTerm\tCount\t%\tPvalue\tGenes\tList Total\tPop Hits\tPop Total\tFold Enrichment\tBonferroni\tBenjamini\tFDR\n')
+                for simpleChartRecord in  simpleTermClusterRecord.simpleChartRecords:
+                        categoryName = simpleChartRecord.categoryName
+                        termName = simpleChartRecord.termName
+                        listHits = simpleChartRecord.listHits
+                        percent = simpleChartRecord.percent
+                        ease = simpleChartRecord.ease
+                        Genes = simpleChartRecord.geneIds
+                        listTotals = simpleChartRecord.listTotals
+                        popHits = simpleChartRecord.popHits
+                        popTotals = simpleChartRecord.popTotals
+                        foldEnrichment = simpleChartRecord.foldEnrichment
+                        bonferroni = simpleChartRecord.bonferroni
+                        benjamini = simpleChartRecord.benjamini
+                        FDR = simpleChartRecord.afdr
+                        rowList = [categoryName,termName,str(listHits),str(percent),str(ease),Genes,str(listTotals),str(popHits),str(popTotals),str(foldEnrichment),str(bonferroni),str(benjamini),str(FDR)]
+                        fOut.write('\t'.join(rowList)+'\n')
 
 
 def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client):
