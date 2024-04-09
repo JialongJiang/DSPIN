@@ -292,40 +292,41 @@ def setup_david_client(token_name):
     return client
 
 
-def parse_david_output(termClusteringReport, save_path):
+def parse_david_output(term_clustering_report, save_path):
     """
-    Parse the output from DAVID and save to a file. 
+    Parse the output from DAVID and save to a file.
 
     Parameters:
-        termClusteringReport: The term clustering report from DAVID Web Service.
+        term_clustering_report: The term clustering report from DAVID Web Service.
         save_path (str): The file path to save the parsed output.
     """
-    totalRows = len(termClusteringReport)
-    print('Total clusters:', totalRows)
-    resF = save_path
-    with open(resF, 'w') as fOut:
-        i = 0
-        for simpleTermClusterRecord in termClusteringReport:
-            i = i+1
-            EnrichmentScore = simpleTermClusterRecord.score
-            fOut.write('Annotation Cluster '+str(i) + '\tEnrichmentScore:'+str(EnrichmentScore)+'\n')
-            fOut.write('Category\tTerm\tCount\t%\tPvalue\tGenes\tList Total\tPop Hits\tPop Total\tFold Enrichment\tBonferroni\tBenjamini\tFDR\n')
-            for simpleChartRecord in  simpleTermClusterRecord.simpleChartRecords:
-                    categoryName = simpleChartRecord.categoryName
-                    termName = simpleChartRecord.termName
-                    listHits = simpleChartRecord.listHits
-                    percent = simpleChartRecord.percent
-                    ease = simpleChartRecord.ease
-                    Genes = simpleChartRecord.geneIds
-                    listTotals = simpleChartRecord.listTotals
-                    popHits = simpleChartRecord.popHits
-                    popTotals = simpleChartRecord.popTotals
-                    foldEnrichment = simpleChartRecord.foldEnrichment
-                    bonferroni = simpleChartRecord.bonferroni
-                    benjamini = simpleChartRecord.benjamini
-                    FDR = simpleChartRecord.afdr
-                    rowList = [categoryName,termName,str(listHits),str(percent),str(ease),Genes,str(listTotals),str(popHits),str(popTotals),str(foldEnrichment),str(bonferroni),str(benjamini),str(FDR)]
-                    fOut.write('\t'.join(rowList)+'\n')
+    total_clusters = len(term_clustering_report)
+    print('Total clusters:', total_clusters)
+    with open(save_path, 'w') as f_out:
+        for i, cluster_record in enumerate(term_clustering_report, start=1):
+            enrichment_score = cluster_record.score
+            f_out.write(f'Annotation Cluster {i}\tEnrichmentScore:{enrichment_score}\n')
+            headers = ['Category', 'Term', 'Count', '%', 'Pvalue', 'Genes', 'List Total',
+                       'Pop Hits', 'Pop Total', 'Fold Enrichment', 'Bonferroni', 'Benjamini', 'FDR']
+            f_out.write('\t'.join(headers) + '\n')
+            for chart_record in cluster_record.simpleChartRecords:
+                row = [
+                    chart_record.categoryName,
+                    chart_record.termName,
+                    str(chart_record.listHits),
+                    str(chart_record.percent),
+                    str(chart_record.ease),
+                    chart_record.geneIds,
+                    str(chart_record.listTotals),
+                    str(chart_record.popHits),
+                    str(chart_record.popTotals),
+                    str(chart_record.foldEnrichment),
+                    str(chart_record.bonferroni),
+                    str(chart_record.benjamini),
+                    str(chart_record.afdr)
+                ]
+                f_out.write('\t'.join(row) + '\n')
+
 
 
 def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client):
@@ -348,6 +349,12 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         data_folder, file_name.replace('.csv', '_david_results/'))
     os.makedirs(save_folder, exist_ok=True)
 
+    overlap=3
+    initialSeed = 3
+    finalSeed = 3
+    linkage = 0.5
+    kappa = 50
+
     for i in range(num_lists):
         cur_gene_list = all_onmf_df.iloc[:, i].dropna()
         cur_gene_list = map_gene_ids(gene_id_map, cur_gene_list)
@@ -359,9 +366,10 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         list_type = 0
 
         client.service.addList(input_ids, id_type, list_name, list_type)
-        term_clustering_report = client.service.getTermClusterReport(
-            3, 3, 3, 0.5, 50)
+        term_clustering_report = client.service.getTermClusterReport(overlap, initialSeed, finalSeed, linkage, kappa);
+
         print(f'Gene list {i} ', end='\t')
+        print(term_clustering_report)
         parse_david_output(term_clustering_report, save_path)
 
 
