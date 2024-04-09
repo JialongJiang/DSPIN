@@ -21,7 +21,7 @@ install_requires = [
 # ]
 
 # Managing your version (adjust accordingly)
-version = "1.0.9"  # You can manage versioning in a more sophisticated way if needed
+version = "1.0.11"  # You can manage versioning in a more sophisticated way if needed
 
 # Long description (usually a README file)
 readme = open("README_PyPI.md").read()  # Adjust the file name if necessary
@@ -37,7 +37,8 @@ setup(
     python_requires=">=3.6",  # Adjust depending on your compatibility
     install_requires=install_requires,
     # extras_require={"test": test_requires, "doc": doc_requires},
-    test_suite="nose2.collector.collector",  # Adjust if you're using a different test suite
+    # Adjust if you're using a different test suite
+    test_suite="nose2.collector.collector",
     long_description=readme,
     long_description_content_type="text/markdown",
     url="https://github.com/JialongJiang/DSPIN",  # Replace with your repository URL

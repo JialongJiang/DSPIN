@@ -237,7 +237,8 @@ def read_data(data_folder, file_name):
     gene_df = pd.read_csv(program_file_name)
     gene_list = gene_df.values.flatten().astype('str')
     unique_genes = list(np.unique(gene_list))
-    unique_genes.remove('nan')
+    if 'nan' in unique_genes:
+        unique_genes.remove('nan')
     return gene_df, unique_genes
 
 
@@ -305,7 +306,8 @@ def parse_david_output(term_clustering_report, save_path):
     with open(save_path, 'w') as f_out:
         for i, cluster_record in enumerate(term_clustering_report, start=1):
             enrichment_score = cluster_record.score
-            f_out.write(f'Annotation Cluster {i}\tEnrichmentScore:{enrichment_score}\n')
+            f_out.write(
+                f'Annotation Cluster {i}\tEnrichmentScore:{enrichment_score}\n')
             headers = ['Category', 'Term', 'Count', '%', 'Pvalue', 'Genes', 'List Total',
                        'Pop Hits', 'Pop Total', 'Fold Enrichment', 'Bonferroni', 'Benjamini', 'FDR']
             f_out.write('\t'.join(headers) + '\n')
@@ -328,7 +330,6 @@ def parse_david_output(term_clustering_report, save_path):
                 f_out.write('\t'.join(row) + '\n')
 
 
-
 def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client):
     """
     Process each gene list, communicate with DAVID, and parse the results.
@@ -349,7 +350,7 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         data_folder, file_name.replace('.csv', '_david_results/'))
     os.makedirs(save_folder, exist_ok=True)
 
-    overlap=3
+    overlap = 3
     initialSeed = 3
     finalSeed = 3
     linkage = 0.5
@@ -366,10 +367,15 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         list_type = 0
 
         client.service.addList(input_ids, id_type, list_name, list_type)
-        term_clustering_report = client.service.getTermClusterReport(overlap, initialSeed, finalSeed, linkage, kappa);
+        term_clustering_report = client.service.getTermClusterReport(
+            overlap, initialSeed, finalSeed, linkage, kappa)
 
         print(f'Gene list {i} ', end='\t')
-        print(term_clustering_report)
+        # print(term_clustering_report)
+        if term_clustering_report is None:
+            raise Exception(
+                'No results returned from DAVID, possibly wrong token name.')
+
         parse_david_output(term_clustering_report, save_path)
 
 

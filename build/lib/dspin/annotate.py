@@ -237,7 +237,8 @@ def read_data(data_folder, file_name):
     gene_df = pd.read_csv(program_file_name)
     gene_list = gene_df.values.flatten().astype('str')
     unique_genes = list(np.unique(gene_list))
-    unique_genes.remove('nan')
+    if 'nan' in unique_genes:
+        unique_genes.remove('nan')
     return gene_df, unique_genes
 
 
@@ -281,6 +282,9 @@ def setup_david_client(token_name):
     Returns:
         Client: An authenticated suds client for DAVID Web Service.
     """
+
+    from suds.client import Client
+
     url = 'https://david.ncifcrf.gov/webservice/services/DAVIDWebService?wsdl'
     client = Client(url)
     client.wsdl.services[0].setlocation(
@@ -346,6 +350,12 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         data_folder, file_name.replace('.csv', '_david_results/'))
     os.makedirs(save_folder, exist_ok=True)
 
+    overlap = 3
+    initialSeed = 3
+    finalSeed = 3
+    linkage = 0.5
+    kappa = 50
+
     for i in range(num_lists):
         cur_gene_list = all_onmf_df.iloc[:, i].dropna()
         cur_gene_list = map_gene_ids(gene_id_map, cur_gene_list)
@@ -358,8 +368,14 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
 
         client.service.addList(input_ids, id_type, list_name, list_type)
         term_clustering_report = client.service.getTermClusterReport(
-            3, 3, 3, 0.5, 50)
+            overlap, initialSeed, finalSeed, linkage, kappa)
+
         print(f'Gene list {i} ', end='\t')
+        # print(term_clustering_report)
+        if term_clustering_report is None:
+            raise Exception(
+                'No results returned from DAVID, possibly wrong token name.')
+
         parse_david_output(term_clustering_report, save_path)
 
 
