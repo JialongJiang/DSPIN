@@ -111,6 +111,10 @@ class AbstractDSPIN(ABC):
     def relative_responses(self):
         return self._relative_responses
 
+    @property
+    def sample_list(self):
+        return self._samp_list
+
     @program_representation.setter
     def program_representation(self, value):
         self._onmf_rep_ori = value
@@ -130,6 +134,10 @@ class AbstractDSPIN(ABC):
     @relative_responses.setter
     def relative_responses(self, value):
         self._relative_responses = value
+
+    @sample_list.setter
+    def sample_list(self, value):
+        self._samp_list = value
 
     def discretize(self) -> np.ndarray:
         """
@@ -155,7 +163,7 @@ class AbstractDSPIN(ABC):
         raw_data, samp_list = sample_corr_mean(
             self.adata.obs[sample_col_name], self._onmf_rep_tri)
         self._raw_data = raw_data
-        self.samp_list = samp_list
+        self._samp_list = samp_list
 
     def raw_data_state(self, sample_col_name) -> np.ndarray:
         """
@@ -179,7 +187,7 @@ class AbstractDSPIN(ABC):
             state_list[ii] = cur_state.T
 
         self._raw_data = state_list
-        self.samp_list = samp_list
+        self._samp_list = samp_list
 
     def default_params(self,
                        method: str) -> dict:
@@ -197,9 +205,9 @@ class AbstractDSPIN(ABC):
         raw_data = self.raw_data
 
         if self.example_list is not None:
-            example_list_ind = [list(self.samp_list).index(samp)
+            example_list_ind = [list(self._samp_list).index(samp)
                                 for samp in self.example_list]
-            self.samp_list = self.samp_list[example_list_ind]
+            self._samp_list = self._samp_list[example_list_ind]
             raw_data = raw_data[example_list_ind]
 
         num_sample = len(raw_data)
@@ -210,8 +218,7 @@ class AbstractDSPIN(ABC):
         params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
-                       'lambda_l2_h': 0.005,
-                       'lambda_prior_h': 0})
+                       'lambda_l2_h': 0.005})
         params.update({'backtrack_gap': 20,
                        'backtrack_tol': 4})
 
@@ -293,7 +300,7 @@ class AbstractDSPIN(ABC):
                 file_path = self.save_path + 'raw_data.mat'
             elif method in ['pseudo_likelihood', 'directed_pseudo_likelihood']:
                 file_path = self.save_path + 'raw_data_state.mat'
-            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self.samp_list})
+            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list})
             print("Data saved to {}. Please run the network inference in MATLAB and load the results back.".format(file_path))
 
         else:
@@ -302,32 +309,17 @@ class AbstractDSPIN(ABC):
             self._responses = cur_h
 
     def response_relative_to_control(self, 
-                           control_col_name: str, 
-                           batch_col_name: str = None):
+                           if_control: np.array, 
+                           batch_index: np.array):
         """
         Compute the relative responses based on the control samples in each batch or all batches.
 
         Parameters:
-        control_col_name (str, optional): The name of the control column in adata, default is None.
-        batch_col_name (str, optional): The name of the batch column in adata, default is None.
+        if_control (numpy.ndarray): A boolean array indicating which samples are control samples.
+        batch_index (numpy.ndarray): An array indicating the batch assignment for each sample.
         """
 
-        assert(np.sum(self.adata.obs[control_col_name]) > 0)
-
-        unique_sample_control = self.adata.obs[[self.sample_col_name, control_col_name]].drop_duplicates().set_index(self.sample_col_name)
-        # only remain samples in self.samp_list
-        unique_sample_control = unique_sample_control.loc[self.samp_list]
-        sample_to_control_dict = unique_sample_control[control_col_name].to_dict()
-
-        if batch_col_name is None:
-            sample_batch_dict = {sample: 0 for sample in self.samp_list}
-        else:
-
-            unique_sample_batch = self.adata.obs[[self.sample_col_name, batch_col_name]].drop_duplicates().set_index(self.sample_col_name)
-            unique_sample_batch = unique_sample_batch.loc[self.samp_list]
-            sample_batch_dict = unique_sample_batch[batch_col_name].to_dict()
-    
-        self._relative_responses = compute_relative_responses(self._responses, self.samp_list, sample_to_control_dict, sample_batch_dict)
+        self._relative_responses = compute_relative_responses(cur_h, if_control, batch_index)
 
 
 class GeneDSPIN(AbstractDSPIN):

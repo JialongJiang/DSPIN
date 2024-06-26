@@ -598,21 +598,33 @@ def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat):
     """
     num_spin, num_round = cur_h.shape
 
-    lambda_l1_j, lambda_l1_h, lambda_l2_j, lambda_l2_h, lambda_prior_h = (
+    lambda_l1_j, lambda_l1_h, lambda_l2_j, lambda_l2_h = (
         train_dat.get(
             key, 0) for key in [
-            "lambda_l1_j", "lambda_l1_h", "lambda_l2_j", "lambda_l2_h", "lambda_prior_h"])
+            "lambda_l1_j", "lambda_l1_h", "lambda_l2_j", "lambda_l2_h"])
 
     if lambda_l1_j > 0:
         rec_jgrad += lambda_l1_j * \
-            (cur_j / 0.02).clip(-1, 1).reshape(num_spin, num_spin, 1)
+            (cur_j / 1e-3).clip(-1, 1).reshape(num_spin, num_spin, 1)
     if lambda_l1_h > 0:
-        rec_hgrad += lambda_l1_h * (cur_h / 0.02).clip(-1, 1)
+        rec_hgrad += lambda_l1_h * (cur_h / 1e-3).clip(-1, 1)
 
     if lambda_l2_j > 0:
         rec_jgrad += lambda_l2_j * cur_j
     if lambda_l2_h > 0:
         rec_hgrad += lambda_l2_h * cur_h
+
+    if 'if_control' in train_dat:
+        if_control = train_dat['if_control']
+        batch_index = train_dat['batch_index']
+        h_rela = compute_relative_responses(cur_h, if_control, batch_index)
+
+        if 'lambda_l2_h_rela_prior' in train_dat:
+            perturb_matrix = train_dat['perturb_matrix']
+            rec_hgrad += train_dat['lambda_l2_h_rela_prior'] * (h_rela - perturb_matrix)
+
+        if 'lambda_l1_h_rela' in train_dat:
+            rec_hgrad += train_dat['lambda_l1_h_rela'] * (h_rela / 1e-3).clip(-1, 1)
 
     return rec_jgrad, rec_hgrad
 
@@ -755,7 +767,8 @@ def learn_network_adam(raw_data, method, train_dat):
 
     return cur_j, cur_h
 
-def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_batch):
+
+def compute_relative_responses(cur_h, if_control, batch_index):
     """
     Compute the relative responses of samples by subtracting the average of control samples.
     This function calculates the relative responses for a set of samples by comparing each sample's response 
@@ -764,37 +777,36 @@ def compute_relative_responses(cur_h, samp_list, dict_samp_control, dict_samp_ba
 
     Parameters:
     cur_h (numpy.ndarray): A 2D array where each column represents a sample and each row represents a feature.
-    samp_list (iterable): A list or iterable of sample identifiers.
-    dict_samp_control (dict): A dictionary mapping sample identifiers to a boolean indicating if the sample is a control.
-    dict_samp_batch (dict): A dictionary mapping sample identifiers to their respective batch identifiers.
+    if_control (numpy.ndarray): A boolean array indicating which samples are control samples.
+    batch_index (numpy.ndarray): An array indicating the batch assignment for each sample.
 
     Returns:
     numpy.ndarray: A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
     """
-    samp_list = list(samp_list)
+    
+    if np.all(if_control == 0):
+        raise ValueError('if_control contains all zeros')
 
-    relative_responses = np.zeros_like(cur_h)
-    control_samples = [sample for sample, is_control in dict_samp_control.items() if is_control]
+    unique_batches = np.unique(batch_index)
+    num_batches = len(unique_batches)
 
-    global_control_avg = np.mean(cur_h[:, [samp_list.index(samp) for samp in control_samples]], axis=1)
-
-    # Iterate over each sample
-    for index, sample in enumerate(samp_list):
-        cur_batch = dict_samp_batch[sample]
-
-        # Find control samples in the same batch
-        batch_control_samples = [samp for samp, batch in dict_samp_batch.items() if batch == cur_batch and dict_samp_control.get(samp, True)]
-
-        # If there are controls in the batch, use their average
-        if batch_control_samples:
-            batch_control_indices = [samp_list.index(s) for s in batch_control_samples]
-            batch_control_avg = np.mean(cur_h[:, batch_control_indices], axis=1)
-            relative_responses[:, index] = cur_h[:, index] - batch_control_avg
+    relative_h = np.zeros_like(cur_h)
+    all_controls_mean = np.mean(cur_h[:, if_control], axis=1)
+    
+    for current_batch in unique_batches:
+        batch_samples_idx = np.where(batch_index == current_batch)[0]
+        batch_controls_idx = batch_samples_idx[if_control[batch_samples_idx]]
+        
+        if batch_controls_idx.size > 0:
+            batch_controls_mean = np.mean(cur_h[:, batch_controls_idx], axis=1)
         else:
-            # Handle the case where there are no controls at all
-            relative_responses[:, index] = cur_h[:, index] - global_control_avg
+            batch_controls_mean = all_controls_mean
+        
+        for idx in batch_samples_idx:
+            relative_h[:, idx] = cur_h[:, idx] - batch_controls_mean
 
-    return relative_responses
+    return relative_h
+
 
 def select_representative_sample(raw_data, num_select):
     """

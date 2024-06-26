@@ -19,12 +19,6 @@ Classifier: Topic :: Scientific/Engineering :: Physics
 Requires-Python: >=3.6
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Requires-Dist: anndata
-Requires-Dist: matplotlib
-Requires-Dist: scanpy
-Requires-Dist: tqdm
-Requires-Dist: igraph
-Requires-Dist: leidenalg
 
 # D-SPIN: Constructing regulatory network models from scRNA-seq perturbation profiling  
 
