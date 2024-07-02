@@ -410,7 +410,7 @@ def np_mean(array: np.array, axis: int) -> np.array:
 
 
 @numba.jit()
-def pseudol_gradient(cur_j, cur_h, cur_state):
+def pseudol_gradient(cur_j, cur_h, cur_state, directed=False):
     """
     Compute the pseudo-likelihood gradients of j and h.
 
@@ -451,10 +451,10 @@ def pseudol_gradient(cur_j, cur_h, cur_state):
         cur_j_grad[ii, ii] = np.mean(j_sub_grad)
         cur_h_grad[ii] = np.mean(h_eff_grad)
 
-        # Symmetrize j gradient matrix
-        cur_j_grad = (cur_j_grad + cur_j_grad.T) / 2
+        if not directed:
+            cur_j_grad = (cur_j_grad + cur_j_grad.T) / 2
 
-    return -cur_j_grad, -cur_h_grad
+    return - cur_j_grad, - cur_h_grad
 
 
 @numba.njit()
@@ -563,7 +563,7 @@ def compute_gradient(cur_j, cur_h, raw_data, method, train_dat):
         # Computing gradients using the specified method.
         if method == 'pseudo_likelihood':
             j_grad, h_grad = pseudol_gradient(
-                cur_j, cur_h[:, kk].reshape(- 1, 1), raw_data[kk])
+                cur_j, cur_h[:, kk].reshape(- 1, 1), raw_data[kk], directed=train_dat['directed'])
             h_grad = h_grad.flatten()
         else:
             # Distinguishing between other methods and computing gradients
@@ -706,6 +706,7 @@ def learn_network_adam(raw_data, method, train_dat):
                      for name in ["mjj", "vjj", "mhh", "vhh"]}
     backtrack_counter = 0
     counter = 1
+    pbar = tqdm(total=num_epoch)
 
     while counter <= num_epoch:
         # Compute gradient and apply regularization
@@ -739,8 +740,10 @@ def learn_network_adam(raw_data, method, train_dat):
                          'rec_hvec_all': rec_hvec_all,
                          'rec_jmat_all': rec_jmat_all,
                          'rec_jgrad_sum_norm': rec_jgrad_sum_norm})
-            print('Progress: %d, Network gradient: %f' % (
-                np.round(100 * counter / num_epoch, 2), rec_jgrad_sum_norm[counter - 1]))
+            # print('Progress: %d, Network gradient: %f' % (
+            #     np.round(100 * counter / num_epoch, 2), rec_jgrad_sum_norm[counter - 1]))
+            pbar.update(rec_gap)
+            pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.4f}"})
 
         # Handle backtracking
         if counter > backtrack_gap and rec_jgrad_sum_norm[counter - \
@@ -758,6 +761,8 @@ def learn_network_adam(raw_data, method, train_dat):
                 break
         else:
             counter += 1
+
+    pbar.close()
 
     # Retrieve parameters corresponding to the minimum gradient norm found
     # during training

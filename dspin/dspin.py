@@ -237,10 +237,12 @@ class AbstractDSPIN(ABC):
     def network_inference(self,
                           sample_col_name: str = 'sample_id',
                           method: str = 'auto',
+                          directed: bool = False,
                           params: dict = None,
                           example_list: List[str] = None,
                           record_step: int = 10,
-                          run_with_matlab: bool = False):
+                          run_with_matlab: bool = False, 
+                          precomputed_discretization: np.array = None):
         """
         Execute the network inference using the specified method and parameters and record the results.
 
@@ -264,7 +266,7 @@ class AbstractDSPIN(ABC):
             'directed_pseudo_likelihood',
                 'auto']:
             raise ValueError(
-                "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood', 'directed_pseudo_likelihood' or 'auto'.")
+                "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood' or 'auto'.")
 
         if method == 'auto':           
             samp_list = np.unique(self.adata.obs[sample_col_name])
@@ -280,8 +282,13 @@ class AbstractDSPIN(ABC):
                     method = 'mcmc_maximum_likelihood'
                 else:
                     method = 'pseudo_likelihood'
+            if directed:
+                method = 'pseudo_likelihood'
 
         print("Using {} for network inference.".format(method))
+
+        if precomputed_discretization is not None:
+            self._onmf_rep_tri = precomputed_discretization
 
         if method == 'pseudo_likelihood':
             self.raw_data_state(sample_col_name)
@@ -292,6 +299,7 @@ class AbstractDSPIN(ABC):
 
         train_dat = self.default_params(method)
         train_dat['rec_gap'] = record_step
+        train_dat['directed'] = directed
         if params is not None:
             train_dat.update(params)
 
@@ -734,7 +742,7 @@ class DSPIN(object):
     def __new__(cls,
                 adata: ad.AnnData,
                 save_path: str,
-                num_spin: int = 15,
+                num_spin: int = None,
                 filter_threshold: float = 0.02,
                 **kwargs):
         """
@@ -762,6 +770,9 @@ class DSPIN(object):
 
         # if the number of genes is less than the number of spins, use
         # GeneDSPIN
+        if num_spin is None:
+            num_spin = np.min([15, adata.shape[1]])
+
         if adata.shape[1] == num_spin:
             return GeneDSPIN(adata, save_path, num_spin=num_spin, **kwargs)
         elif adata.shape[1] < num_spin:
