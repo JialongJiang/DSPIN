@@ -626,6 +626,16 @@ def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat):
         if 'lambda_l1_h_rela' in train_dat:
             rec_hgrad += train_dat['lambda_l1_h_rela'] * (h_rela / 1e-3).clip(-1, 1)
 
+        if 'lambda_l2_h_rela' in train_dat:
+            rec_hgrad += train_dat['lambda_l2_h_rela'] * h_rela
+
+    if 'lambda_l2_j_prior' in train_dat:
+        rec_jgrad += (train_dat['lambda_l2_j_prior'] * (cur_j - train_dat['j_prior']))[:, :, np.newaxis]
+    
+    if 'lambda_l2_j_prior_mask' in train_dat:
+        rec_jgrad += train_dat['lambda_l2_j_prior_mask'] * (cur_j * (train_dat['j_prior_mask'] == 0))[:, :, np.newaxis]
+    
+
     return rec_jgrad, rec_hgrad
 
 

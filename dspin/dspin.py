@@ -202,13 +202,14 @@ class AbstractDSPIN(ABC):
         """
 
         num_spin = self.num_spin
-        raw_data = self.raw_data
+        raw_data = self._raw_data
 
         if self.example_list is not None:
             example_list_ind = [list(self._samp_list).index(samp)
                                 for samp in self.example_list]
             self._samp_list = self._samp_list[example_list_ind]
             raw_data = raw_data[example_list_ind]
+            self._raw_data = raw_data
 
         num_sample = len(raw_data)
         params = {'num_epoch': 200,
@@ -308,7 +309,7 @@ class AbstractDSPIN(ABC):
                 file_path = self.save_path + 'raw_data.mat'
             elif method in ['pseudo_likelihood', 'directed_pseudo_likelihood']:
                 file_path = self.save_path + 'raw_data_state.mat'
-            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list})
+            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list, **train_dat})
             print("Data saved to {}. Please run the network inference in MATLAB and load the results back.".format(file_path))
 
         else:
