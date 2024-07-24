@@ -272,8 +272,8 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str) -> np.array:
 
     # Save the visual representation
     if fig_folder:
-        print('Saving the example state partition figure to ' + fig_folder + 'onmf_discretize.png')
-        plt.savefig(f'{fig_folder}onmf_discretize.png', bbox_inches='tight')
+        print('Saving the example state partition figure to ' + fig_folder + '/onmf_discretize.png')
+        plt.savefig(f'{fig_folder}/onmf_discretize.png', bbox_inches='tight')
         plt.close()
 
     return onmf_rep_tri
