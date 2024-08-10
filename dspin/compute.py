@@ -582,7 +582,7 @@ def compute_gradient(cur_j, cur_h, raw_data, method, train_dat):
     return rec_jgrad, rec_hgrad
 
 
-def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat):
+def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat, print_regu=False):
     """
     Apply regularization to the gradients.
 
@@ -610,7 +610,7 @@ def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat):
         rec_hgrad += lambda_l1_h * (cur_h / 1e-3).clip(-1, 1)
 
     if lambda_l2_j > 0:
-        rec_jgrad += lambda_l2_j * cur_j
+        rec_jgrad += lambda_l2_j * cur_j.reshape(num_spin, num_spin, 1)
     if lambda_l2_h > 0:
         rec_hgrad += lambda_l2_h * cur_h
 
@@ -635,6 +635,14 @@ def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat):
     if 'lambda_l2_j_prior_mask' in train_dat:
         rec_jgrad += train_dat['lambda_l2_j_prior_mask'] * (cur_j * (train_dat['j_prior_mask'] == 0))[:, :, np.newaxis]
     
+    if print_regu:  
+        print('Regularization parameters')
+        all_regu_list = ['lambda_l1_j', 'lambda_l1_h', 'lambda_l2_j', 'lambda_l2_h', 'lambda_l2_j_prior', 'lambda_l2_j_prior_mask', 'lambda_l2_h_rela_prior', 'lambda_l1_h_rela', 'lambda_l2_h_rela']
+        all_values = [train_dat.get(key, 0) for key in all_regu_list]
+        for key, value in zip(all_regu_list, all_values):
+            if value > 0:
+                print(f'{key}: {value}')
+
 
     return rec_jgrad, rec_hgrad
 
@@ -714,16 +722,20 @@ def learn_network_adam(raw_data, method, train_dat):
     mhh, vhh = np.zeros(cur_h.shape), np.zeros(cur_h.shape)
     log_adam_grad = {name: deque(maxlen=backtrack_gap)
                      for name in ["mjj", "vjj", "mhh", "vhh"]}
+    
+    apply_regularization(np.zeros((num_spin, num_spin, num_round)), np.zeros((num_spin, num_round)), cur_j, cur_h, train_dat, print_regu=True)
+
     backtrack_counter = 0
     counter = 1
     pbar = tqdm(total=num_epoch)
 
     while counter <= num_epoch:
+
         # Compute gradient and apply regularization
         rec_jgrad, rec_hgrad = compute_gradient(
             cur_j, cur_h, raw_data, method, train_dat)
         rec_jgrad, rec_hgrad = apply_regularization(
-            rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat)
+            rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat, print_regu=False)
 
         # Update parameters using Adam optimizer
         rec_jgrad_sum = np.sum(rec_jgrad, axis=2)
@@ -756,8 +768,14 @@ def learn_network_adam(raw_data, method, train_dat):
             pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.4f}"})
 
         # Handle backtracking
-        if counter > backtrack_gap and rec_jgrad_sum_norm[counter - \
-            1] > 2 * rec_jgrad_sum_norm[counter - 1 - backtrack_gap]:
+
+        if counter > backtrack_gap:
+            half_gap = 5
+            est_cur_grad = rec_jgrad_sum_norm[counter - 1]
+            # est_prev_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap: counter - 1 - backtrack_gap + half_gap].mean()
+            est_prev_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap]
+
+        if counter > backtrack_gap and est_cur_grad > 1.5 * est_prev_grad:
             print('Backtracking at epoch %d' % counter)
             backtrack_counter += 1
             mjj, vjj, mhh, vhh = [log_adam_grad[key][0]
@@ -776,7 +794,9 @@ def learn_network_adam(raw_data, method, train_dat):
 
     # Retrieve parameters corresponding to the minimum gradient norm found
     # during training
-    pos = np.argmin(rec_jgrad_sum_norm)
+    trace_epoch = 50 + num_epoch - counter
+    pos = num_epoch - trace_epoch + np.argmin(rec_jgrad_sum_norm[- trace_epoch: ])
+    print(pos)
     cur_h = rec_hvec_all[pos, :, :]
     cur_j = rec_jmat_all[pos, :, :]
 

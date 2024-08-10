@@ -1,12 +1,21 @@
-function [ cur_j, cur_h ] = learn_jmat_adam_pl(state_list, train_dat)
+function [ cur_j, cur_h ] = learn_jmat_adam(raw_data, train_dat)
 
-num_round = size(state_list, 2); 
-num_spin = size(state_list{1}, 1);
+num_round = size(raw_data, 2); 
+
+method = train_dat.method; 
+directed = train_dat.directed; 
 
 state_size = zeros(num_round, 1); 
-for ii = 1: num_round
-    state_size(ii) = size(state_list{ii}, 2);
+if strcmp(method, 'pseudo_likelihood')
+    num_spin = size(raw_data{1}, 1);
+    for ii = 1: num_round
+        state_size(ii) = size(raw_data{ii}, 2);
+    end
+else
+    num_spin = size(raw_data{1}{1}, 1);
+    state_size = ones(num_round, 1); 
 end
+
 samp_weight = sqrt(state_size);
 samp_weight = samp_weight / sum(samp_weight);
 
@@ -43,10 +52,17 @@ counter = 1;
 plot_counter = 1; 
 while counter <= num_epoch
         parfor kk = 1: num_round
-            [corr_grad, mean_grad] = pseudo_grad(cur_j, cur_h(:, kk), state_list{kk});
+            
+            if strcmp(method, 'pseudo_likelihood')
+                [corr_grad, mean_grad] = pseudo_grad(cur_j, cur_h(:, kk), raw_data{kk}, directed);
+            elseif strcmp(method, 'maximum_likelihood')
+                [corr_grad, mean_grad] = mle_grad(cur_j, cur_h(:, kk), raw_data{kk});
+            elseif strcmp(method, 'mcmc_maximum_likelihood')
+                [corr_grad, mean_grad] = mle_mcmc_grad(cur_j, cur_h(:, kk), raw_data{kk}, mcmc_paras);
+            end
 
-            rec_jgrad(:, :, kk) = - corr_grad;
-            rec_hgrad(:, kk) = - mean_grad;   
+            rec_jgrad(:, :, kk) = corr_grad;
+            rec_hgrad(:, kk) = mean_grad;   
         end
 
         
@@ -57,9 +73,13 @@ while counter <= num_epoch
         rec_jgrad = rec_jgrad + train_dat.lam_l1j * min(max(cur_j / 1e-4, -1), 1);
     end
     
-    if isfield(train_dat, 'lam_l2h')
-        rec_hgrad = rec_hgrad + train_dat.lam_l2h * cur_h; end
+    if isfield(train_dat, 'lam_l2j')
+        rec_jgrad = rec_jgrad + train_dat.lam_l2j * cur_j;
+    end
     
+    if isfield(train_dat, 'lam_l2h')
+        rec_hgrad = rec_hgrad + train_dat.lam_l2h * cur_h; 
+    end
     
     if isfield(train_dat, 'if_control')
         relative_h = compute_relative_response(cur_h, train_dat.if_control, train_dat.batch_index); 
@@ -116,7 +136,10 @@ while counter <= num_epoch
         subplot(2, 2, 4)
         imagesc(cur_j(1: num_plot, 1: num_plot))
         colormap(flipud(redblue))
-        caxis([- 0.25, 0.25])
+        % thres = prctile(abs(cur_j(:)), 100 - 600 / num_spin ^ 2);
+        j_copy = 
+        thres = max(abs(cur_j(:)));
+        caxis([- thres, thres])
         
         colorbar()
         drawnow()

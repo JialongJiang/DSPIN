@@ -1,4 +1,4 @@
-function [j_grad, h_grad] = pseudo_grad(j_mat, h_vec, cur_state)
+function [j_grad, h_grad] = pseudo_grad(j_mat, h_vec, cur_state, directed)
     
     num_spin = size(j_mat, 1);
 
@@ -22,9 +22,15 @@ function [j_grad, h_grad] = pseudo_grad(j_mat, h_vec, cur_state)
         j_grad(ii, ii) = mean(j_sub_grad);
 
         h_grad(ii) = mean(h_eff_grad);
-        % j_grad = (j_grad + j_grad') / 2;
+        
+        if ~ directed
+            j_grad = (j_grad + j_grad') / 2;
+        end
+        
     end
 
+    h_grad = - h_grad; 
+    j_grad = - j_grad; 
     
 end
 

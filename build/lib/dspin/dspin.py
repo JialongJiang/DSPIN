@@ -264,8 +264,7 @@ class AbstractDSPIN(ABC):
             'maximum_likelihood',
             'mcmc_maximum_likelihood',
             'pseudo_likelihood',
-            'directed_pseudo_likelihood',
-                'auto']:
+            'auto']:
             raise ValueError(
                 "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood' or 'auto'.")
 
@@ -305,11 +304,10 @@ class AbstractDSPIN(ABC):
             train_dat.update(params)
 
         if run_with_matlab:
-            if method in ['maximum_likelihood', 'mcmc_maximum_likelihood']:
-                file_path = self.save_path + 'raw_data.mat'
-            elif method in ['pseudo_likelihood', 'directed_pseudo_likelihood']:
-                file_path = self.save_path + 'raw_data_state.mat'
-            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list, **train_dat})
+
+            file_path = self.save_path + 'raw_data.mat'
+            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list, 
+            'method': method, 'directed': directed, **train_dat})
             print("Data saved to {}. Please run the network inference in MATLAB and load the results back.".format(file_path))
 
         else:
