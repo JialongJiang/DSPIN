@@ -768,14 +768,20 @@ def learn_network_adam(raw_data, method, train_dat):
             pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.4f}"})
 
         # Handle backtracking
+        
+        if_backtrack = False
 
-        if counter > backtrack_gap:
+        if (counter > backtrack_gap) and (rec_jgrad_sum_norm[counter - 1] > 1.5 * rec_jgrad_sum_norm[counter - 1 - backtrack_gap]):
+            if_backtrack = True
+            
+
+        if (counter > backtrack_gap) and (counter // ):
             half_gap = 5
             est_cur_grad = rec_jgrad_sum_norm[counter - 1]
             # est_prev_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap: counter - 1 - backtrack_gap + half_gap].mean()
             est_prev_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap]
 
-        if counter > backtrack_gap and est_cur_grad > 1.5 * est_prev_grad:
+        if if_backtrack:
             print('Backtracking at epoch %d' % counter)
             backtrack_counter += 1
             mjj, vjj, mhh, vhh = [log_adam_grad[key][0]
