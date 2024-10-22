@@ -775,11 +775,14 @@ def learn_network_adam(raw_data, method, train_dat):
             if_backtrack = True
             
 
-        if (counter > backtrack_gap) and (counter // ):
-            half_gap = 5
-            est_cur_grad = rec_jgrad_sum_norm[counter - 1]
-            # est_prev_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap: counter - 1 - backtrack_gap + half_gap].mean()
-            est_prev_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap]
+        if (counter > 2 * backtrack_gap) and (counter % backtrack_gap == 0):
+
+            est_cur_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap: counter - 1].mean()
+            est_prev_grad = rec_jgrad_sum_norm[counter - 1 - 2 * backtrack_gap: counter - 1 - backtrack_gap].mean()
+
+            if est_cur_grad > 1.05 * est_prev_grad:
+                if_backtrack = True
+
 
         if if_backtrack:
             print('Backtracking at epoch %d' % counter)
@@ -806,7 +809,10 @@ def learn_network_adam(raw_data, method, train_dat):
     cur_h = rec_hvec_all[pos, :, :]
     cur_j = rec_jmat_all[pos, :, :]
 
-    return cur_j, cur_h
+    train_log = {}
+    train_log['network_gradient'] = rec_jgrad_sum_norm[:counter]
+
+    return cur_j, cur_h, train_log
 
 
 def compute_relative_responses(cur_h, if_control, batch_index):

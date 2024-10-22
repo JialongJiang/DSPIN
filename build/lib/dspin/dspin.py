@@ -311,9 +311,10 @@ class AbstractDSPIN(ABC):
             print("Data saved to {}. Please run the network inference in MATLAB and load the results back.".format(file_path))
 
         else:
-            cur_j, cur_h = learn_network_adam(self.raw_data, method, train_dat)
+            cur_j, cur_h, train_log = learn_network_adam(self.raw_data, method, train_dat)
             self._network = cur_j
             self._responses = cur_h
+            self.train_log = train_log
 
     def response_relative_to_control(self, 
                            if_control: np.array, 
