@@ -327,7 +327,7 @@ class AbstractDSPIN(ABC):
         batch_index (numpy.ndarray): An array indicating the batch assignment for each sample.
         """
 
-        self._relative_responses = compute_relative_responses(cur_h, if_control, batch_index)
+        self._relative_responses = compute_relative_responses(self.responses, if_control, batch_index)
 
 
 class GeneDSPIN(AbstractDSPIN):
