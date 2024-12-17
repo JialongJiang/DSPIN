@@ -209,14 +209,14 @@ def onmf(X: np.array, rank: int, max_iter: int = 200) -> (np.array, np.array):
     return S.T, A
 
 
-def compute_onmf(seed: int, num_spin: int, gene_matrix_bin: np.array) -> NMF:
+def compute_onmf(seed: int, num_spin: int, gene_matrix: np.array) -> NMF:
     """
     Computes the ONMF model for the given gene matrix.
 
     Parameters:
     seed (int): Seed for Random Number Generation.
     num_spin (int): The number of desired components (clusters/spins).
-    gene_matrix_bin (np.array): Binary Matrix representing the gene expression data.
+    gene_matrix (np.array): Matrix representing the gene expression data. Typically the matrix should be normalized by library size and log-1 transfromed. Normalize each gene by its standard devaition is also recommended.
 
     Returns:
     NMF: The NMF model with computed components.
@@ -225,7 +225,7 @@ def compute_onmf(seed: int, num_spin: int, gene_matrix_bin: np.array) -> NMF:
     # Generate a random seed
     np.random.seed(seed)
     # Factorized Matrices
-    H, W = onmf(gene_matrix_bin, num_spin)
+    H, W = onmf(gene_matrix, num_spin)
 
     # Initialize the NMF model
     nmf_model = NMF(n_components=num_spin, random_state=seed)
