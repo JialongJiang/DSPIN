@@ -18,6 +18,7 @@ end
 
 samp_weight = sqrt(state_size);
 samp_weight = samp_weight / sum(samp_weight);
+% samp_weight = 1 / num_round; 
 
 num_epoch = train_dat.epoch;
 stepsz = train_dat.stepsz; 
@@ -50,27 +51,35 @@ cur_backtrap = 0;
 
 counter = 1;
 plot_counter = 1; 
-while counter <= num_epoch
-        parfor kk = 1: num_round
-            
-            if strcmp(method, 'pseudo_likelihood')
-                [corr_grad, mean_grad] = pseudo_grad(cur_j, cur_h(:, kk), raw_data{kk}, directed);
-            elseif strcmp(method, 'maximum_likelihood')
-                [corr_grad, mean_grad] = mle_grad(cur_j, cur_h(:, kk), raw_data{kk});
-            elseif strcmp(method, 'mcmc_maximum_likelihood')
-                [corr_grad, mean_grad] = mle_mcmc_grad(cur_j, cur_h(:, kk), raw_data{kk}, mcmc_paras);
-            end
 
-            rec_jgrad(:, :, kk) = corr_grad;
-            rec_hgrad(:, kk) = mean_grad;   
+rec_jmat_log = zeros(num_spin, num_spin, num_rec); 
+
+while counter <= num_epoch
+    fprintf('%d ', counter);
+
+    parfor kk = 1: num_round
+
+        corr_grad = zeros(num_spin);
+        mean_grad = zeros(num_spin, num_round); 
+        
+        if strcmp(method, 'pseudo_likelihood')
+            [corr_grad, mean_grad] = pseudo_grad(cur_j, cur_h(:, kk), raw_data{kk}, directed);
+        elseif strcmp(method, 'maximum_likelihood')
+            [corr_grad, mean_grad] = mle_grad(cur_j, cur_h(:, kk), raw_data{kk});
+        elseif strcmp(method, 'mcmc_maximum_likelihood')
+            [corr_grad, mean_grad] = mle_mcmc_grad(cur_j, cur_h(:, kk), raw_data{kk}, mcmc_paras);
         end
+
+        rec_jgrad(:, :, kk) = corr_grad;
+        rec_hgrad(:, kk) = mean_grad;   
+    end
 
         
     rec_jgrad_full = rec_jgrad; 
     rec_jgrad = sum(rec_jgrad .* reshape(samp_weight, 1, 1, []), 3); 
     
     if isfield(train_dat, 'lam_l1j')
-        rec_jgrad = rec_jgrad + train_dat.lam_l1j * min(max(cur_j / 1e-4, -1), 1);
+        rec_jgrad = rec_jgrad + train_dat.lam_l1j * min(max(cur_j / 0.02, -1), 1);
     end
     
     if isfield(train_dat, 'lam_l2j')
@@ -80,6 +89,12 @@ while counter <= num_epoch
     if isfield(train_dat, 'lam_l2h')
         rec_hgrad = rec_hgrad + train_dat.lam_l2h * cur_h; 
     end
+
+    if isfield(train_dat, 'lam_l1j_prior')
+        prior_mask = (train_dat.prior_network == 0); 
+        rec_jgrad = rec_jgrad + train_dat.lam_l1j_prior * min(max((cur_j .* prior_mask) / 0.02, -1), 1);
+    end
+
     
     if isfield(train_dat, 'if_control')
         relative_h = compute_relative_response(cur_h, train_dat.if_control, train_dat.batch_index); 
@@ -106,7 +121,8 @@ while counter <= num_epoch
     rec_hgrad_norm(:, counter) = sqrt(sum(rec_hgrad .^ 2, 1));
     rec_jgrad_norm(:, counter) = sqrt(sum(rec_jgrad_full .^ 2, [1, 2]));
     % rec_jgrad_sum_norm(jj) = sqrt(sum(sum(rec_jgrad_full, 3) .^ 2, [1, 2]));
-    rec_jgrad_sum_norm(counter) = sqrt(sum(rec_jgrad .^ 2, [1, 2]));
+    % rec_jgrad_sum_norm(counter) = sqrt(sum(rec_jgrad .^ 2, [1, 2]));
+    rec_jgrad_sum_norm(counter) = norm(rec_jgrad, 'fro');
     
     mm_log{counter} = mm; 
     vv_log{counter} = vv; 
@@ -115,6 +131,9 @@ while counter <= num_epoch
     if counter == list_step(plot_counter)
         
         fprintf('%d ', round(100 * plot_counter / num_rec));
+        currentDateTime = datetime('now');
+        formattedTime = datestr(currentDateTime, 'HH:MM:SS');
+        disp(formattedTime);
         
         if plot_counter > 1
         subplot(2, 2, 1)
@@ -144,7 +163,9 @@ while counter <= num_epoch
         colorbar()
         drawnow()
         saveas(gcf, [save_path, '/log.fig'])
-        save([save_path, '/network_mlog.mat'], 'rec_jmat_all', 'rec_hvec_all', 'rec_jgrad_sum_norm')
+
+        rec_jmat_log(:, :, plot_counter) = cur_j; 
+        save([save_path, '/network_mlog.mat'], 'cur_j', 'cur_h', 'rec_jgrad_sum_norm', 'rec_jmat_log')
         plot_counter = plot_counter + 1;
     end
 
