@@ -54,13 +54,13 @@ class AbstractDSPIN(ABC):
     -------
     discretize()
         Discretizes the ONMF representation into three states (-1, 0, 1) using K-means clustering.
-    raw_data_corr(sample_col_name)
+    raw_data_corr(sample_id_key)
         Computes correlation of raw data based on sample column name.
-    raw_data_state(sample_col_name)
+    raw_data_state(sample_id_key)
         Calculate and return the correlation of raw data.
     default_params(method)
         Provide the default parameters for the specified algorithm.
-    network_inference(sample_col_name, method, params, example_list, record_step)
+    network_inference(sample_id_key, method, params, example_list, record_step)
         Execute the network inference using the specified method and parameters and record the results.
     """
 
@@ -84,7 +84,7 @@ class AbstractDSPIN(ABC):
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
             print("Saving path does not exist. Creating a new folder.")
-        self.fig_folder = self.save_path + 'figs/'
+        self.fig_folder = self.save_path + 'figures/'
         os.makedirs(self.fig_folder, exist_ok=True)
 
     @property
@@ -139,38 +139,43 @@ class AbstractDSPIN(ABC):
     def sample_list(self, value):
         self._samp_list = value
 
-    def discretize(self) -> np.ndarray:
+    def discretize(self, clip_percentile = 100) -> np.ndarray:
         """
         Discretizes the ONMF representation into three states (-1, 0, 1) using K-means clustering.
 
         Returns:
         - np.ndarray: The discretized ONMF representation.
         """
-        onmf_rep_ori = self.program_representation
+        onmf_rep_ori = self.program_representation.copy()
         fig_folder = self.fig_folder
+
+        if clip_percentile < 100:
+            for ii in range(onmf_rep_ori.shape[1]):
+                onmf_rep_ori[:, ii] = onmf_rep_ori[:, ii] / np.percentile(onmf_rep_ori[:, ii], clip_percentile)
+            onmf_rep_ori = onmf_rep_ori.clip(0, 1)
 
         onmf_rep_tri = onmf_discretize(onmf_rep_ori, fig_folder)
         self._onmf_rep_tri = onmf_rep_tri
 
-    def raw_data_corr(self, sample_col_name) -> np.ndarray:
+    def raw_data_corr(self, sample_id_key) -> np.ndarray:
         """
         Computes correlation of raw data based on sample column name.
 
-        :param sample_col_name: The name of the sample column to be used for correlation computation.
+        :param sample_id_key: The name of the sample column to be used for correlation computation.
         :return: The correlated raw data.
         """
 
         raw_data, samp_list = sample_corr_mean(
-            self.adata.obs[sample_col_name], self._onmf_rep_tri)
+            self.adata.obs[sample_id_key], self._onmf_rep_tri)
         self._raw_data = raw_data
         self._samp_list = samp_list
 
-    def raw_data_state(self, sample_col_name) -> np.ndarray:
+    def raw_data_state(self, sample_id_key) -> np.ndarray:
         """
         Calculate and return the correlation of raw data.
 
         Parameters:
-        sample_col_name (str): The name of the column in the sample to calculate the correlation.
+        sample_id_key (str): The name of the column in the sample to calculate the correlation.
 
         Returns:
         np.ndarray: Array representing the correlated raw data.
@@ -181,11 +186,11 @@ class AbstractDSPIN(ABC):
         except:
             raise ValueError("Please compute program decomposition first.")
 
-        samp_list = np.unique(cadata.obs[sample_col_name])
+        samp_list = np.unique(cadata.obs[sample_id_key])
         state_list = np.zeros(len(samp_list), dtype=object)
 
         for ii, cur_samp in enumerate(samp_list):
-            cur_filt = cadata.obs[sample_col_name] == cur_samp
+            cur_filt = cadata.obs[sample_id_key] == cur_samp
             cur_state = self._onmf_rep_tri[cur_filt, :]
             state_list[ii] = cur_state.T
 
@@ -239,7 +244,7 @@ class AbstractDSPIN(ABC):
         return params
 
     def network_inference(self,
-                          sample_col_name: str = 'sample_id',
+                          sample_id_key: str = 'sample_id',
                           method: str = 'auto',
                           directed: bool = False,
                           params: dict = None,
@@ -251,7 +256,7 @@ class AbstractDSPIN(ABC):
         Execute the network inference using the specified method and parameters and record the results.
 
         Parameters:
-        sample_col_name (str): The name of the sample column.
+        sample_id_key (str): The name of the sample column.
         method (str, optional): The method used for network inference, default is 'auto'.
         params (dict, optional): Dictionary of parameters to be used, default is None.
         example_list (List[str], optional): List of examples to be used, default is None.
@@ -261,7 +266,7 @@ class AbstractDSPIN(ABC):
         ValueError: If an invalid method is specified.
         """
 
-        self.sample_col_name = sample_col_name
+        self.sample_id_key = sample_id_key
 
         if method not in [
             'maximum_likelihood',
@@ -272,7 +277,7 @@ class AbstractDSPIN(ABC):
                 "Method must be one of 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood' or 'auto'.")
 
         if method == 'auto':           
-            samp_list = np.unique(self.adata.obs[sample_col_name])
+            samp_list = np.unique(self.adata.obs[sample_id_key])
             num_sample = len(samp_list)
             if example_list is not None:
                 num_sample = len(example_list)
@@ -294,9 +299,9 @@ class AbstractDSPIN(ABC):
             self._onmf_rep_tri = precomputed_discretization
 
         if method == 'pseudo_likelihood':
-            self.raw_data_state(sample_col_name)
+            self.raw_data_state(sample_id_key)
         else:
-            self.raw_data_corr(sample_col_name)
+            self.raw_data_corr(sample_id_key)
 
         self.example_list = example_list
 
@@ -320,8 +325,9 @@ class AbstractDSPIN(ABC):
             self.train_log = train_log
 
     def response_relative_to_control(self, 
-                           if_control: np.array, 
-                           batch_index: np.array):
+                           sample_id_key: str = 'sample_id',
+                           if_control_key: str = 'if_control', 
+                           batch_key: str = 'batch'):
         """
         Compute the relative responses based on the control samples in each batch or all batches.
 
@@ -329,6 +335,18 @@ class AbstractDSPIN(ABC):
         if_control (numpy.ndarray): A boolean array indicating which samples are control samples.
         batch_index (numpy.ndarray): An array indicating the batch assignment for each sample.
         """
+
+        if if_control_key not in self.adata.obs.columns:
+            raise ValueError(f"Column '{if_control_key}' not found in adata.obs.")
+        if batch_key not in self.adata.obs.columns:
+            raise ValueError(f"Column '{batch_key}' not found in adata.obs.")
+        
+        sample_list = self._samp_list
+        sample_to_control = self.adata.obs.groupby(sample_id_key)[if_control_key].first().to_dict()
+        sample_to_batch = self.adata.obs.groupby(sample_id_key)[batch_key].first().to_dict()
+
+        if_control = np.array([sample_to_control[sample] for sample in sample_list])
+        batch_index = np.array([sample_to_batch[sample] for sample in sample_list])
 
         self._relative_responses = compute_relative_responses(self.responses, if_control, batch_index)
 
@@ -342,7 +360,8 @@ class GeneDSPIN(AbstractDSPIN):
     def __init__(self,
                  adata: ad.AnnData,
                  save_path: str,
-                 num_spin: int):
+                 num_spin: int,
+                 clip_percentile: float = 95):
         """
         Initialize the GeneDSPIN object.
 
@@ -356,11 +375,11 @@ class GeneDSPIN(AbstractDSPIN):
         print("GeneDSPIN initialized.")
 
         if issparse(adata.X):
-            self._onmf_rep_ori = np.array(adata.X)
+            self._onmf_rep_ori = adata.X.toarray()
         else:
             self._onmf_rep_ori = adata.X
 
-        self.discretize()
+        self.discretize(clip_percentile)
 
 
 class ProgramDSPIN(AbstractDSPIN):
@@ -766,7 +785,7 @@ class DSPIN(object):
         # It retains only those genes that have expression
         # in more than the specified percentage of cells.
 
-        if np.any(adata.X < 0):
+        if adata.X.min() < 0:
             warnings.warn("Negative expression detected. Expect normalized log-transformed data.")
 
         sc.pp.filter_genes(adata, min_cells=adata.shape[0] * filter_threshold)

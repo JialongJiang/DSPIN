@@ -209,14 +209,14 @@ def onmf(X: np.array, rank: int, max_iter: int = 200) -> (np.array, np.array):
     return S.T, A
 
 
-def compute_onmf(seed: int, num_spin: int, gene_matrix_bin: np.array) -> NMF:
+def compute_onmf(seed: int, num_spin: int, gene_matrix: np.array) -> NMF:
     """
     Computes the ONMF model for the given gene matrix.
 
     Parameters:
     seed (int): Seed for Random Number Generation.
     num_spin (int): The number of desired components (clusters/spins).
-    gene_matrix_bin (np.array): Binary Matrix representing the gene expression data.
+    gene_matrix (np.array): Matrix representing the gene expression data. Typically the matrix should be normalized by library size and log-1 transfromed. Normalize each gene by its standard devaition is also recommended.
 
     Returns:
     NMF: The NMF model with computed components.
@@ -225,7 +225,7 @@ def compute_onmf(seed: int, num_spin: int, gene_matrix_bin: np.array) -> NMF:
     # Generate a random seed
     np.random.seed(seed)
     # Factorized Matrices
-    H, W = onmf(gene_matrix_bin, num_spin)
+    H, W = onmf(gene_matrix, num_spin)
 
     # Initialize the NMF model
     nmf_model = NMF(n_components=num_spin, random_state=seed)
@@ -805,7 +805,7 @@ def learn_network_adam(raw_data, method, train_dat):
     # during training
     trace_epoch = 50 + num_epoch - counter
     pos = num_epoch - trace_epoch + np.argmin(rec_jgrad_sum_norm[- trace_epoch: ])
-    print(pos)
+    # print(pos)
     cur_h = rec_hvec_all[pos, :, :]
     cur_j = rec_jmat_all[pos, :, :]
 
@@ -831,20 +831,22 @@ def compute_relative_responses(cur_h, if_control, batch_index):
     numpy.ndarray: A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
     """
     
-    if np.all(if_control == 0):
-        raise ValueError('if_control contains all zeros')
 
     unique_batches = np.unique(batch_index)
     num_batches = len(unique_batches)
 
     relative_h = np.zeros_like(cur_h)
-    all_controls_mean = np.mean(cur_h[:, if_control], axis=1)
+    
+    if np.all(if_control == 0):
+        all_controls_mean = np.mean(cur_h, axis=1)
+    else:
+        all_controls_mean = np.mean(cur_h[:, if_control], axis=1)
     
     for current_batch in unique_batches:
         batch_samples_idx = np.where(batch_index == current_batch)[0]
-        batch_controls_idx = batch_samples_idx[if_control[batch_samples_idx]]
-        
-        if batch_controls_idx.size > 0:
+
+        if np.any(if_control[batch_samples_idx]):
+            batch_controls_idx = batch_samples_idx[if_control[batch_samples_idx]]
             batch_controls_mean = np.mean(cur_h[:, batch_controls_idx], axis=1)
         else:
             batch_controls_mean = all_controls_mean

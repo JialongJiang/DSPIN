@@ -805,7 +805,7 @@ def learn_network_adam(raw_data, method, train_dat):
     # during training
     trace_epoch = 50 + num_epoch - counter
     pos = num_epoch - trace_epoch + np.argmin(rec_jgrad_sum_norm[- trace_epoch: ])
-    print(pos)
+    # print(pos)
     cur_h = rec_hvec_all[pos, :, :]
     cur_j = rec_jmat_all[pos, :, :]
 
