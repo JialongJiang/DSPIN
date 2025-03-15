@@ -176,7 +176,10 @@ class AbstractDSPIN(ABC):
         np.ndarray: Array representing the correlated raw data.
         """
         cadata = self.adata
-        onmf_rep_tri = self._onmf_rep_tri
+        try: 
+            onmf_rep_tri = self._onmf_rep_tri
+        except:
+            raise ValueError("Please compute program decomposition first.")
 
         samp_list = np.unique(cadata.obs[sample_col_name])
         state_list = np.zeros(len(samp_list), dtype=object)
@@ -762,6 +765,10 @@ class DSPIN(object):
         # Filtering genes based on the filter_threshold.
         # It retains only those genes that have expression
         # in more than the specified percentage of cells.
+
+        if np.any(adata.X < 0):
+            warnings.warn("Negative expression detected. Expect normalized log-transformed data.")
+
         sc.pp.filter_genes(adata, min_cells=adata.shape[0] * filter_threshold)
         print(
             '{} genes have expression in more than {} of the cells'.format(

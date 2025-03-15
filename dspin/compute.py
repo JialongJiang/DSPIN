@@ -831,20 +831,22 @@ def compute_relative_responses(cur_h, if_control, batch_index):
     numpy.ndarray: A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
     """
     
-    if np.all(if_control == 0):
-        raise ValueError('if_control contains all zeros')
 
     unique_batches = np.unique(batch_index)
     num_batches = len(unique_batches)
 
     relative_h = np.zeros_like(cur_h)
-    all_controls_mean = np.mean(cur_h[:, if_control], axis=1)
+    
+    if np.all(if_control == 0):
+        all_controls_mean = np.mean(cur_h, axis=1)
+    else:
+        all_controls_mean = np.mean(cur_h[:, if_control], axis=1)
     
     for current_batch in unique_batches:
         batch_samples_idx = np.where(batch_index == current_batch)[0]
-        batch_controls_idx = batch_samples_idx[if_control[batch_samples_idx]]
-        
-        if batch_controls_idx.size > 0:
+
+        if np.any(if_control[batch_samples_idx]):
+            batch_controls_idx = batch_samples_idx[if_control[batch_samples_idx]]
             batch_controls_mean = np.mean(cur_h[:, batch_controls_idx], axis=1)
         else:
             batch_controls_mean = all_controls_mean
