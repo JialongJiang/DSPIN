@@ -4,9 +4,7 @@
 @Author  :   Jialong Jiang, Yingying Gong
 '''
 
-from .plot import (
-    onmf_to_csv
-)
+from .plot import onmf_to_csv
 from .compute import (
     onmf_discretize,
     sample_corr_mean,
@@ -32,36 +30,22 @@ import networkx as nx
 import matplotlib.patheffects as patheffects
 import warnings
 import itertools
-from typing import List
+from typing import List, Dict, Optional, Tuple
+
 
 
 class AbstractDSPIN(ABC):
     """
-    Parent and abstract class for DSPIN, not to be instantiated directly.
-    Contains methods and properties common to both GeneDSPIN and ProgramDSPIN.
-
-    ...
+    Abstract base class for DSPIN, providing common methods and properties for GeneDSPIN and ProgramDSPIN.
+    
     Attributes
     ----------
     adata : ad.AnnData
-        Annotated data.
+        Annotated single-cell gene expression data.
     save_path : str
-        Path where results will be saved.
+        Directory path where results will be stored.
     num_spin : int
-        Number of spins.
-
-    Methods
-    -------
-    discretize()
-        Discretizes the ONMF representation into three states (-1, 0, 1) using K-means clustering.
-    raw_data_corr(sample_id_key)
-        Computes correlation of raw data based on sample column name.
-    raw_data_state(sample_id_key)
-        Calculate and return the correlation of raw data.
-    default_params(method)
-        Provide the default parameters for the specified algorithm.
-    network_inference(sample_id_key, method, params, example_list, record_step)
-        Execute the network inference using the specified method and parameters and record the results.
+        Number of spins for modeling.
     """
 
     def __init__(self,
@@ -69,12 +53,16 @@ class AbstractDSPIN(ABC):
                  save_path: str,
                  num_spin: int):
         """
-        Initialize the AbstractDSPIN object with specified Annotated Data, save path, and number of spins.
+        Initialize an instance of AbstractDSPIN.
 
-        Parameters:
-        adata (ad.AnnData): Annotated Data.
-        save_path (str): Path where results will be saved.
-        num_spin (int): number of spins.
+        Parameters
+        ----------
+        adata : ad.AnnData
+            Annotated data matrix containing observations and gene expressions.
+        save_path : str
+            Directory path for saving results.
+        num_spin : int
+            Number of spins used in DSPIN.
         """
 
         self.adata = adata
@@ -84,6 +72,7 @@ class AbstractDSPIN(ABC):
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
             print("Saving path does not exist. Creating a new folder.")
+            
         self.fig_folder = self.save_path + 'figures/'
         os.makedirs(self.fig_folder, exist_ok=True)
 
@@ -139,12 +128,14 @@ class AbstractDSPIN(ABC):
     def sample_list(self, value):
         self._samp_list = value
 
-    def discretize(self, clip_percentile = 100) -> np.ndarray:
+    def discretize(self, clip_percentile: float = 100) -> None:
         """
         Discretizes the ONMF representation into three states (-1, 0, 1) using K-means clustering.
 
-        Returns:
-        - np.ndarray: The discretized ONMF representation.
+        Parameters
+        ----------
+        clip_percentile : float, optional
+            Percentile at which to clip values before discretization (default is 100).
         """
         onmf_rep_ori = self.program_representation.copy()
         fig_folder = self.fig_folder
@@ -157,34 +148,30 @@ class AbstractDSPIN(ABC):
         onmf_rep_tri = onmf_discretize(onmf_rep_ori, fig_folder)
         self._onmf_rep_tri = onmf_rep_tri
 
-    def raw_data_corr(self, sample_id_key) -> np.ndarray:
+    def raw_data_corr(self, sample_id_key: str) -> None:
         """
-        Computes correlation of raw data based on sample column name.
+        Computes correlation of raw data based on a sample column name.
 
-        :param sample_id_key: The name of the sample column to be used for correlation computation.
-        :return: The correlated raw data.
+        Parameters
+        ----------
+        sample_id_key : str
+            Column name in adata.obs specifying sample identifiers.
         """
-
         raw_data, samp_list = sample_corr_mean(
             self.adata.obs[sample_id_key], self._onmf_rep_tri)
         self._raw_data = raw_data
         self._samp_list = samp_list
 
-    def raw_data_state(self, sample_id_key) -> np.ndarray:
+    def raw_data_state(self, sample_id_key) -> None:
         """
-        Calculate and return the correlation of raw data.
+        Compute and return the state of raw data based on sample identifiers.
 
-        Parameters:
-        sample_id_key (str): The name of the column in the sample to calculate the correlation.
-
-        Returns:
-        np.ndarray: Array representing the correlated raw data.
+        Parameters
+        ----------
+        sample_id_key : str
+            Column name in `adata.obs` used to group and compute raw data states.
         """
         cadata = self.adata
-        try: 
-            onmf_rep_tri = self._onmf_rep_tri
-        except:
-            raise ValueError("Please compute program decomposition first.")
 
         samp_list = np.unique(cadata.obs[sample_id_key])
         state_list = np.zeros(len(samp_list), dtype=object)
@@ -202,8 +189,10 @@ class AbstractDSPIN(ABC):
         """
         Provide the default parameters for the specified algorithm.
 
-        Parameters:
-        method (str): The method for which to return the default parameters.
+        Parameters
+        ----------
+        method : str
+            The inference method. Options: 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood'.
 
         Returns:
         dict: Dictionary containing default parameters for the specified method.
@@ -223,7 +212,8 @@ class AbstractDSPIN(ABC):
         params = {'num_epoch': 200,
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
-                  'save_path': self.save_path}
+                  'save_path': self.save_path, 
+                  'rec_gap': 10}
         params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
@@ -249,21 +239,24 @@ class AbstractDSPIN(ABC):
                           directed: bool = False,
                           params: dict = None,
                           example_list: List[str] = None,
-                          record_step: int = 10,
-                          run_with_matlab: bool = False, 
-                          precomputed_discretizaGtion: np.array = None):
+                          run_with_matlab: bool = False) - > None:
         """
-        Execute the network inference using the specified method and parameters and record the results.
+        Perform network inference using a specified method and parameters.
 
-        Parameters:
-        sample_id_key (str): The name of the sample column.
-        method (str, optional): The method used for network inference, default is 'auto'.
-        params (dict, optional): Dictionary of parameters to be used, default is None.
-        example_list (List[str], optional): List of examples to be used, default is None.
-        record_step (int, optional): The step interval to record the results, default is 10.
-
-        Raises:
-        ValueError: If an invalid method is specified.
+        Parameters
+        ----------
+        sample_id_key : str, optional
+            Column name in `adata.obs` for sample identifiers. Default is 'sample_id'.
+        method : str, optional
+            The method used for network inference. Options: 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood', 'auto'. Default is 'auto'.
+        directed : bool, optional
+            Whether to infer a directed network. Default is False.
+        params : dict, optional
+            Additional parameters for network inference. Default is None.
+        example_list : List[str], optional
+            List of example sample identifiers. Default is None.
+        run_with_matlab : bool, optional
+            If True, prepares data for MATLAB execution instead of running inference in Python. Default is False.
         """
 
         self.sample_id_key = sample_id_key
@@ -295,9 +288,6 @@ class AbstractDSPIN(ABC):
 
         print("Using {} for network inference.".format(method))
 
-        if precomputed_discretization is not None:
-            self._onmf_rep_tri = precomputed_discretization
-
         if method == 'pseudo_likelihood':
             self.raw_data_state(sample_id_key)
         else:
@@ -306,7 +296,6 @@ class AbstractDSPIN(ABC):
         self.example_list = example_list
 
         train_dat = self.default_params(method)
-        train_dat['rec_gap'] = record_step
         train_dat['directed'] = directed
         if params is not None:
             train_dat.update(params)
@@ -316,7 +305,7 @@ class AbstractDSPIN(ABC):
             file_path = self.save_path + 'raw_data.mat'
             savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list, 
             'method': method, 'directed': directed, **train_dat})
-            print("Data saved to {}. Please run the network inference in MATLAB and load the results back.".format(file_path))
+            print("Data saved to {}. Please run the network inference in MATLAB".format(file_path))
 
         else:
             cur_j, cur_h, train_log = learn_network_adam(self.raw_data, method, train_dat)
@@ -391,6 +380,8 @@ class GeneDSPIN(AbstractDSPIN):
         program_representation (np.ndarray): The gene program representation.
         params (dict, optional): Dictionary containing parameters for the regression. Default is None.
         """
+
+        a = 1 
 
         
 
