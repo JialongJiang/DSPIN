@@ -251,7 +251,7 @@ class AbstractDSPIN(ABC):
                           example_list: List[str] = None,
                           record_step: int = 10,
                           run_with_matlab: bool = False, 
-                          precomputed_discretization: np.array = None):
+                          precomputed_discretizaGtion: np.array = None):
         """
         Execute the network inference using the specified method and parameters and record the results.
 
@@ -380,6 +380,19 @@ class GeneDSPIN(AbstractDSPIN):
             self._onmf_rep_ori = adata.X
 
         self.discretize(clip_percentile)
+
+    def program_regulator_discovery(self, 
+                                    program_representation: np.ndarray, 
+                                    params: dict = None):
+        """
+        Discover regulators of the given gene programs using regression. 
+
+        Parameters:
+        program_representation (np.ndarray): The gene program representation.
+        params (dict, optional): Dictionary containing parameters for the regression. Default is None.
+        """
+
+        
 
 
 class ProgramDSPIN(AbstractDSPIN):
