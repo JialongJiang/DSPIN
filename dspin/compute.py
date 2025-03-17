@@ -338,6 +338,18 @@ def sample_corr_mean(samp_full: np.array,
     return raw_corr_data, samp_list
 
 
+def sample_states(samp_full: np.array, onmf_rep_tri: np.array) -> Tuple[np.array, np.array]:
+
+    samp_list = np.unique(samp_full)
+    state_list = np.zeros(len(samp_list), dtype=object)
+
+    for ii, cur_samp in enumerate(samp_list):
+        cur_filt = samp_full == cur_samp
+        cur_state = onmf_rep_tri[cur_filt, :]
+        state_list[ii] = cur_state.T
+
+    return state_list, samp_list
+
 def para_moments(j_mat: np.array, h_vec: np.array) -> (np.array, np.array):
     """
     Calculates the mean and correlation given j network and h vectors.
@@ -813,6 +825,144 @@ def learn_network_adam(raw_data, method, train_dat):
     train_log['network_gradient'] = rec_jgrad_sum_norm[:counter]
 
     return cur_j, cur_h, train_log
+
+
+
+def learn_program_regulators(gene_states, program_states, train_dat):
+    """
+    Discover regulators for gene programs via regression.
+    
+    Parameters
+    ----------
+    gene_states : list of np.ndarray
+        Each element is a gene state array of shape (n_spin, T),
+        where T may vary across samples.
+    program_states : list of np.ndarray
+        Each element is a program state array of shape (n_target, T).
+    train_dat : dict
+        Dictionary of training parameters. Expected keys (with defaults):
+          - 'num_epoch': int, default 300
+          - 'stepsz': float, default 0.01
+          - 'decay': float, default 0.2 (not explicitly used here)
+          - 'interaction_l1': float, default 0.01
+          
+    Returns
+    -------
+    cur_interaction : np.ndarray
+        Learned interaction matrix of shape (n_spin, n_target).
+    cur_selfj : np.ndarray
+        Learned self-interaction (regulator-specific bias) of shape (n_target,).
+    cur_selfh : np.ndarray
+        Learned program activity bias of shape (n_target,).
+    """
+
+    num_gene = gene_states[0].shape[0]
+    num_program = program_states[0].shape[0]
+    num_round = len(gene_states)
+
+    num_epoch, stepsz, rec_gap = (
+        train_dat.get(
+            key, None) for key in [
+            "num_epoch", "stepsz", "rec_gap"])
+    list_step = np.arange(num_epoch, 0, - rec_gap)[::-1]
+
+    save_path = train_dat.get('save_path', None)
+
+    backtrack_gap, backtrack_tol = (
+        train_dat.get(
+            key, None) for key in [
+            "backtrack_gap", "backtrack_tol"])
+
+    
+    # Initialize parameters (using zeros)
+    cur_interaction = np.zeros((num_gene, num_program))
+    cur_selfj = np.zeros(num_program)
+    cur_selfh = np.zeros(num_program)
+    
+    # Compute sample weights based on the number of states (columns) in each gene_states sample
+    state_sizes = np.array([state.shape[1] for state in gene_states])
+    samp_weight = np.sqrt(state_sizes)
+    samp_weight = samp_weight / np.sum(samp_weight)
+    
+    # Preallocate gradient norm recording (optional)
+    rec_grad = np.zeros(num_epoch)
+    
+    # Initialize Adam moment variables for each parameter
+    mm = [np.zeros_like(cur_interaction), np.zeros_like(cur_selfj), np.zeros_like(cur_selfh)]
+    vv = [np.zeros_like(cur_interaction), np.zeros_like(cur_selfj), np.zeros_like(cur_selfh)]
+    
+    # Create l1 regularization schedule
+    l1_base_start = 0.02
+    l1_base_end = 1e-3
+    
+    part1 = np.full((num_epoch // 4 + 1,), l1_base_start)
+    part2 = np.logspace(np.log10(l1_base_start), np.log10(l1_base_end), num=num_epoch // 2)
+    part3 = np.full((num_epoch // 4 + 1,), l1_base_end)
+    l1_base_array = np.concatenate([part1, part2, part3])[:num_epoch]
+    
+    # Preallocate arrays to collect per-sample gradients
+    rec_interaction_grad = np.zeros((num_round, num_gene, num_program))
+    rec_selfj_grad = np.zeros((num_round, num_program))
+    rec_selfh_grad = np.zeros((num_round, num_program))
+    
+    # Main training loop
+    for epoch in range(num_epoch):
+        l1_base = l1_base_array[epoch]
+        
+        for kk in range(num_samp):
+            cur_state = gene_states[kk]          # shape: (n_spin, T)
+            cur_target = program_states[kk]        # shape: (n_target, T)
+            
+
+            effective_h = cur_state.T @ cur_interaction  + cur_selfh.T
+            
+            # j_sub is the bias for regulators (broadcasted as row vector)
+            j_sub = cur_selfj.T  # shape: (n_target,)
+            
+            # Compute terms.
+            # We follow MATLAB: term1 = exp(j_sub + effective_h)' so that term1 becomes (n_target, T)
+            term1 = np.exp(j_sub + effective_h).T  # shape: (n_target, T)
+            term2 = np.exp(j_sub - effective_h).T  # shape: (n_target, T)
+            
+            # Compute gradients for the bias parameters per sample
+            j_sub_grad = cur_target**2 - (term1 + term2) / (term1 + term2 + 1)
+            h_eff_grad = cur_target - (term1 - term2) / (term1 + term2 + 1)
+            
+            # Gradient for interaction parameters
+            # cur_state: (n_spin, T), h_eff_grad.T: (T, n_target)
+            j_off_sub_grad = cur_state @ h_eff_grad.T  # shape: (n_spin, n_target)
+            
+            # Average over the T (state) dimension
+            rec_interaction_grad[kk] = j_off_sub_grad / T
+            rec_selfj_grad[kk] = np.mean(j_sub_grad, axis=1)
+            rec_selfh_grad[kk] = np.mean(h_eff_grad, axis=1)
+        
+        # Aggregate gradients across samples using sample weights
+        interaction_grad = np.sum(rec_interaction_grad * samp_weight[:, None, None], axis=0)
+        selfj_grad = np.sum(rec_selfj_grad * samp_weight[:, None], axis=0)
+        selfh_grad = np.sum(rec_selfh_grad * samp_weight[:, None], axis=0)
+        
+        # Adjust gradients (note the minus sign as in MATLAB)
+        interaction_grad = -interaction_grad + interaction_l1 * np.clip(cur_interaction / l1_base, -1, 1)
+        selfj_grad = - selfj_grad
+        selfh_grad = - selfh_grad
+        
+        # Update parameters using the provided update_adam function
+        update_val, m_interaction, v_interaction = update_adam(interaction_grad, m_interaction, v_interaction, epoch + 1, stepsz)
+        cur_interaction = cur_interaction - update_val
+        
+        update_val, m_selfj, v_selfj = update_adam(selfj_grad, m_selfj, v_selfj, epoch + 1, stepsz)
+        cur_selfj = cur_selfj - update_val
+        
+        update_val, m_selfh, v_selfh = update_adam(selfh_grad, m_selfh, v_selfh, epoch + 1, stepsz)
+        cur_selfh = cur_selfh - update_val
+        
+        # Record gradient norm (optional)
+        rec_grad[epoch] = np.linalg.norm(interaction_grad)
+        # (Optional: print progress)
+        # print(f"Epoch {epoch+1}/{num_epoch}: grad norm = {rec_grad[epoch]:.4f}")
+    
+    return cur_interaction, cur_selfj, cur_selfh
 
 
 def compute_relative_responses(cur_h, if_control, batch_index):
