@@ -17,7 +17,7 @@ import os
 from sklearn.cluster import KMeans
 import scipy.io as sio
 from tqdm import tqdm
-from typing import List
+from typing import List, Tuple
 
 
 def category_balance_number(
@@ -873,7 +873,8 @@ def learn_program_regulators(gene_states, program_states, train_dat):
             key, None) for key in [
             "backtrack_gap", "backtrack_tol"])
 
-    
+    lambda_l1_j, lambda_l2_j = (train_dat.get(key, 0) for key in ["lambda_l1_j", "lambda_l2_j"])
+
     # Initialize parameters (using zeros)
     cur_interaction = np.zeros((num_gene, num_program))
     cur_selfj = np.zeros(num_program)
@@ -886,10 +887,10 @@ def learn_program_regulators(gene_states, program_states, train_dat):
     
     # Preallocate gradient norm recording (optional)
     rec_grad = np.zeros(num_epoch)
-    
-    # Initialize Adam moment variables for each parameter
-    mm = [np.zeros_like(cur_interaction), np.zeros_like(cur_selfj), np.zeros_like(cur_selfh)]
-    vv = [np.zeros_like(cur_interaction), np.zeros_like(cur_selfj), np.zeros_like(cur_selfh)]
+
+    m_interaction, v_interaction = np.zeros_like(cur_interaction), np.zeros_like(cur_interaction)
+    m_selfj, v_selfj = np.zeros_like(cur_selfj), np.zeros_like(cur_selfj)
+    m_selfh, v_selfh = np.zeros_like(cur_selfh), np.zeros_like(cur_selfh)
     
     # Create l1 regularization schedule
     l1_base_start = 0.02
@@ -909,11 +910,10 @@ def learn_program_regulators(gene_states, program_states, train_dat):
     for epoch in range(num_epoch):
         l1_base = l1_base_array[epoch]
         
-        for kk in range(num_samp):
-            cur_state = gene_states[kk]          # shape: (n_spin, T)
-            cur_target = program_states[kk]        # shape: (n_target, T)
+        for kk in range(num_round):
+            cur_state = gene_states[kk]         
+            cur_target = program_states[kk]   
             
-
             effective_h = cur_state.T @ cur_interaction  + cur_selfh.T
             
             # j_sub is the bias for regulators (broadcasted as row vector)
@@ -921,8 +921,8 @@ def learn_program_regulators(gene_states, program_states, train_dat):
             
             # Compute terms.
             # We follow MATLAB: term1 = exp(j_sub + effective_h)' so that term1 becomes (n_target, T)
-            term1 = np.exp(j_sub + effective_h).T  # shape: (n_target, T)
-            term2 = np.exp(j_sub - effective_h).T  # shape: (n_target, T)
+            term1 = np.exp(j_sub + effective_h).T
+            term2 = np.exp(j_sub - effective_h).T
             
             # Compute gradients for the bias parameters per sample
             j_sub_grad = cur_target**2 - (term1 + term2) / (term1 + term2 + 1)
@@ -933,20 +933,20 @@ def learn_program_regulators(gene_states, program_states, train_dat):
             j_off_sub_grad = cur_state @ h_eff_grad.T  # shape: (n_spin, n_target)
             
             # Average over the T (state) dimension
-            rec_interaction_grad[kk] = j_off_sub_grad / T
+            rec_interaction_grad[kk] = j_off_sub_grad / cur_state.shape[1]
             rec_selfj_grad[kk] = np.mean(j_sub_grad, axis=1)
             rec_selfh_grad[kk] = np.mean(h_eff_grad, axis=1)
         
         # Aggregate gradients across samples using sample weights
-        interaction_grad = np.sum(rec_interaction_grad * samp_weight[:, None, None], axis=0)
-        selfj_grad = np.sum(rec_selfj_grad * samp_weight[:, None], axis=0)
-        selfh_grad = np.sum(rec_selfh_grad * samp_weight[:, None], axis=0)
+        interaction_grad = - np.sum(rec_interaction_grad * samp_weight[:, None, None], axis=0)
+        selfj_grad = - np.sum(rec_selfj_grad * samp_weight[:, None], axis=0)
+        selfh_grad = - np.sum(rec_selfh_grad * samp_weight[:, None], axis=0)
         
-        # Adjust gradients (note the minus sign as in MATLAB)
-        interaction_grad = -interaction_grad + interaction_l1 * np.clip(cur_interaction / l1_base, -1, 1)
-        selfj_grad = - selfj_grad
-        selfh_grad = - selfh_grad
-        
+        if lambda_l1_j > 0:
+            interaction_grad += lambda_l1_j * (cur_interaction / l1_base).clip(- 1, 1)
+        if lambda_l2_j > 0:
+            interaction_grad += lambda_l2_j * cur_interaction
+
         # Update parameters using the provided update_adam function
         update_val, m_interaction, v_interaction = update_adam(interaction_grad, m_interaction, v_interaction, epoch + 1, stepsz)
         cur_interaction = cur_interaction - update_val

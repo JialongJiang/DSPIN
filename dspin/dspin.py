@@ -32,7 +32,7 @@ import networkx as nx
 import matplotlib.patheffects as patheffects
 import warnings
 import itertools
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
 
 
 
@@ -234,7 +234,7 @@ class AbstractDSPIN(ABC):
                           directed: bool = False,
                           params: dict = None,
                           example_list: List[str] = None,
-                          run_with_matlab: bool = False) - > None:
+                          run_with_matlab: bool = False) -> None:
         """
         Perform network inference using a specified method and parameters.
 
@@ -400,7 +400,8 @@ class GeneDSPIN(AbstractDSPIN):
         train_dat = {
             'num_epoch': 500,
             'stepsz': 0.01,
-            'lam_l1_interaction': 0.01
+            'lambda_l1_interaction': 0.01,
+            'rec_gap': 10
         }
 
         if params is not None:
@@ -408,7 +409,7 @@ class GeneDSPIN(AbstractDSPIN):
 
         cur_interaction, cur_selfj, cur_selfh = learn_program_regulators(gene_states, program_states, train_dat)
 
-        self.program_intearctions = cur_interaction
+        self.program_interactions = cur_interaction
         self.program_activities = cur_selfh
         self.program_self_intearctions = cur_selfj
         
