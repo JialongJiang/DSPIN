@@ -906,9 +906,12 @@ def learn_program_regulators(gene_states, program_states, train_dat):
     rec_selfj_grad = np.zeros((num_round, num_program))
     rec_selfh_grad = np.zeros((num_round, num_program))
     
-    # Main training loop
-    for epoch in range(num_epoch):
-        l1_base = l1_base_array[epoch]
+    pbar = tqdm(total=num_epoch)
+    counter = 1
+
+    while counter <= num_epoch:
+
+        l1_base = l1_base_array[counter - 1]
         
         for kk in range(num_round):
             cur_state = gene_states[kk]         
@@ -948,19 +951,23 @@ def learn_program_regulators(gene_states, program_states, train_dat):
             interaction_grad += lambda_l2_j * cur_interaction
 
         # Update parameters using the provided update_adam function
-        update_val, m_interaction, v_interaction = update_adam(interaction_grad, m_interaction, v_interaction, epoch + 1, stepsz)
+        update_val, m_interaction, v_interaction = update_adam(interaction_grad, m_interaction, v_interaction, counter, stepsz)
         cur_interaction = cur_interaction - update_val
         
-        update_val, m_selfj, v_selfj = update_adam(selfj_grad, m_selfj, v_selfj, epoch + 1, stepsz)
+        update_val, m_selfj, v_selfj = update_adam(selfj_grad, m_selfj, v_selfj, counter, stepsz)
         cur_selfj = cur_selfj - update_val
         
-        update_val, m_selfh, v_selfh = update_adam(selfh_grad, m_selfh, v_selfh, epoch + 1, stepsz)
+        update_val, m_selfh, v_selfh = update_adam(selfh_grad, m_selfh, v_selfh, counter, stepsz)
         cur_selfh = cur_selfh - update_val
         
         # Record gradient norm (optional)
-        rec_grad[epoch] = np.linalg.norm(interaction_grad)
-        # (Optional: print progress)
-        # print(f"Epoch {epoch+1}/{num_epoch}: grad norm = {rec_grad[epoch]:.4f}")
+        rec_grad[counter - 1] = np.linalg.norm(interaction_grad)
+        
+        if counter in list_step:
+            pbar.update(rec_gap)
+            pbar.set_postfix({"Network Gradient": f"{rec_grad[counter - 1]:.4f}"})
+
+        counter += 1
     
     return cur_interaction, cur_selfj, cur_selfh
 

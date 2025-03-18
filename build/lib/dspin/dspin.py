@@ -79,11 +79,11 @@ class AbstractDSPIN(ABC):
         os.makedirs(self.fig_folder, exist_ok=True)
 
     @property
-    def program_representation(self):
+    def program_representation_raw(self):
         return self._onmf_rep_ori
 
     @property
-    def program_discretized(self):
+    def program_representation(self):
         return self._onmf_rep_tri
 
     @property
@@ -106,12 +106,12 @@ class AbstractDSPIN(ABC):
     def sample_list(self):
         return self._samp_list
 
-    @program_representation.setter
-    def program_representation(self, value):
+    @program_representation_raw.setter
+    def program_representation_raw(self, value):
         self._onmf_rep_ori = value
 
-    @program_discretized.setter
-    def program_discretized(self, value):
+    @program_representation.setter
+    def program_representation(self, value):
         self._onmf_rep_tri = value
 
     @network.setter
@@ -139,7 +139,7 @@ class AbstractDSPIN(ABC):
         clip_percentile : float, optional
             Percentile at which to clip values before discretization (default is 100).
         """
-        onmf_rep_ori = self.program_representation.copy()
+        onmf_rep_ori = self.program_representation_raw.copy()
         fig_folder = self.fig_folder
 
         if clip_percentile < 100:
@@ -377,7 +377,7 @@ class GeneDSPIN(AbstractDSPIN):
         self.discretize(clip_percentile)
 
     def program_regulator_discovery(self, 
-                                    program_representation: np.ndarray, 
+                                    program_representation_raw: np.ndarray, 
                                     sample_id_key: str = 'sample_id',
                                     params: dict = None):
         """
@@ -385,7 +385,7 @@ class GeneDSPIN(AbstractDSPIN):
 
         Parameters
         ----------
-        program_representation : np.ndarray
+        program_representation_raw : np.ndarray
             The gene program representation.
         sample_id_key : str, optional
             Column name in `adata.obs` specifying sample identifiers. Default is 'sample_id'.
@@ -393,7 +393,7 @@ class GeneDSPIN(AbstractDSPIN):
             Additional parameters for regression. Default is None.
         """
 
-        program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation)
+        program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation_raw)
 
         gene_states, _ = sample_states(self.adata.obs[sample_id_key], self._onmf_rep_tri)
 
@@ -409,9 +409,9 @@ class GeneDSPIN(AbstractDSPIN):
 
         cur_interaction, cur_selfj, cur_selfh = learn_program_regulators(gene_states, program_states, train_dat)
 
-        self.program_intearctions = cur_interaction
+        self.program_interactions = cur_interaction
         self.program_activities = cur_selfh
-        self.program_self_intearctions = cur_selfj
+        self.program_self_interactions = cur_selfj
         
 
 
