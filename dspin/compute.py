@@ -151,17 +151,23 @@ def summary_components(all_components: np.array,
     return gene_groups_ind
 
 
-def onmf(X: np.array, rank: int, max_iter: int = 200) -> (np.array, np.array):
+def onmf(X: np.array, rank: int, max_iter: int = 500) -> (np.array, np.array):
     """
-    Orthogonal Non-Negative Matrix Factorization (ONMF) for a given rank.
+    Perform Orthogonal Non-Negative Matrix Factorization (ONMF) for a given rank.
 
-    Parameters:
-    X (np.array): Input Data Matrix.
-    rank (int): Desired Rank for Factorization.
-    max_iter (int, optional): Maximum Number of Iterations. Defaults to 100.
+    Parameters
+    ----------
+    X : np.array
+        Input data matrix.
+    rank : int
+        Desired rank for factorization.
+    max_iter : int, optional
+        Maximum number of iterations. Default is 500.
 
-    Returns:
-    np.array, np.array: Factorized Matrices S.T and A.
+    Returns
+    -------
+    np.array, np.array
+        Factorized matrices S.T and A.
     """
 
     m, n = X.shape
@@ -201,23 +207,33 @@ def onmf(X: np.array, rank: int, max_iter: int = 200) -> (np.array, np.array):
     return S.T, A
 
 
-def compute_onmf(seed: int, num_spin: int, gene_matrix: np.array) -> NMF:
+def compute_onmf(seed: int, 
+                 num_spin: int, 
+                 gene_matrix: np.array,
+                 max_iter: int = 500) -> NMF:
     """
-    Computes the ONMF model for the given gene matrix.
+    Compute the ONMF model for the given gene matrix.
 
-    Parameters:
-    seed (int): Seed for Random Number Generation.
-    num_spin (int): The number of desired components (clusters/spins).
-    gene_matrix (np.array): Matrix representing the gene expression data. Typically the matrix should be normalized by library size and log-1 transfromed. Normalize each gene by its standard devaition is also recommended.
+    Parameters
+    ----------
+    seed : int
+        Seed for random number generation.
+    num_spin : int
+        The number of desired components (clusters/spins).
+    gene_matrix : np.array
+        Matrix representing gene expression data. Typically, the matrix should be normalized by library size and log1-transformed. Normalizing each gene by its standard deviation is also recommended.
+    max_iter : int, optional
+        Maximum number of iterations. Default is 500.
 
-    Returns:
-    NMF: The NMF model with computed components.
+    Returns
+    -------
+    NMF
+        The NMF model with computed components.
     """
-
     # Generate a random seed
     np.random.seed(seed)
     # Factorized Matrices
-    H, W = onmf(gene_matrix, num_spin)
+    H, W = onmf(gene_matrix, num_spin, max_iter)
 
     # Initialize the NMF model
     nmf_model = NMF(n_components=num_spin, random_state=seed)
@@ -229,7 +245,7 @@ def compute_onmf(seed: int, num_spin: int, gene_matrix: np.array) -> NMF:
     return nmf_model
 
 
-def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str) -> np.array:
+def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
     """
     Discretize the representation obtained from ONMF using KMeans clustering and visualize the sorted representations.
 
@@ -263,28 +279,12 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str) -> np.array:
                      km_fit.labels_].reshape(-1)))
 
     # Save the visual representation
-    if fig_folder:
+    if fig_folder is not None:
         print('Saving the example state partition figure to ' + fig_folder + '/onmf_discretize.png')
         plt.savefig(f'{fig_folder}/onmf_discretize.png', bbox_inches='tight')
         plt.close()
 
     return onmf_rep_tri
-
-
-def corr(data: np.array) -> np.array:
-    """
-    Calculates the correlation of the given data.
-
-    Parameters:
-    data (np.array): Input Data Matrix.
-
-    Returns:
-    np.array: Correlation Matrix of the given data.
-    """
-
-    # Transposing and dot multiplying the matrix, and normalizing by the
-    # number of samples.
-    return data.T.dot(data) / data.shape[0]
 
 
 def corr_mean(cur_data: np.array) -> np.array:
@@ -299,8 +299,8 @@ def corr_mean(cur_data: np.array) -> np.array:
     """
 
     rec_data = np.zeros(2, dtype=object)
-    rec_data[0] = corr(cur_data)  # Storing correlation matrix
-    rec_data[1] = np.mean(cur_data, axis=0).reshape(-1, 1)  # Storing mean
+    rec_data[0] = cur_data.T.dot(cur_data) / cur_data.shape[0]
+    rec_data[1] = np.mean(cur_data, axis=0).reshape(-1, 1)  
 
     return rec_data
 
