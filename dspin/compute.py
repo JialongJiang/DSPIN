@@ -25,104 +25,96 @@ def category_balance_number(
         cluster_count: List[int],
         method: str,
         maximum_sample_rate: float) -> np.array:
-    '''
-    Calculate the sampling number for each category based on the given method.
+    """
+    Calculate the sampling number for each category based on the specified method.
 
-    Parameters:
-    total_sample_size (int): The total size of the samples.
-    cluster_count (List[int]): A list containing the count of elements in each cluster.
-    method (str): The method used for balancing the categories; can be 'equal', 'proportional', or 'squareroot'.
-    maximum_sample_rate (float): The maximum rate of the samples.
+    Parameters
+    ----------
+    total_sample_size : int
+        The total number of samples.
+    cluster_count : List[int]
+        A list containing the count of elements in each cluster.
+    method : str
+        The method used for balancing the categories. Options are 'equal', 'proportional', or 'squareroot'.
+    maximum_sample_rate : float
+        The maximum sample rate allowed.
 
-    Returns:
-    np.array: An array containing the number of samples from each category based on the given method.
-    '''
+    Returns
+    -------
+    np.array
+        An array containing the number of samples for each category computed using the given method.
+    """
 
     # Validate the method parameter
     if method not in ['equal', 'proportional', 'squareroot']:
-        raise ValueError(
-            'method must be one of equal, proportional, squareroot')
+        raise ValueError('method must be one of equal, proportional, squareroot')
 
-    # Calculate sampling_number based on the given method
+    # Calculate the sampling number based on the selected method.
     if method == 'squareroot':
-        # For squareroot method, calculate based on the square root of the
-        # cluster count
-        esti_size = (
-            np.sqrt(cluster_count) /
-            np.sum(
-                np.sqrt(cluster_count)) *
-            total_sample_size).astype(int)
-        weight_fun = np.min(
-            [esti_size, maximum_sample_rate * np.array(cluster_count)], axis=0)
+        # For the 'squareroot' method, compute values based on the square root of the cluster counts.
+        esti_size = (np.sqrt(cluster_count) / np.sum(np.sqrt(cluster_count)) * total_sample_size).astype(int)
+        weight_fun = np.min([esti_size, maximum_sample_rate * np.array(cluster_count)], axis=0)
     elif method == 'equal':
-        # For equal method, divide total_sample_size by the number of clusters
+        # For the 'equal' method, divide the total sample size equally among clusters.
         esti_size = total_sample_size / len(cluster_count)
-        weight_fun = np.min([esti_size *
-                             np.ones(len(cluster_count)), maximum_sample_rate *
-                             np.array(cluster_count)], axis=0)
+        weight_fun = np.min([esti_size * np.ones(len(cluster_count)), maximum_sample_rate * np.array(cluster_count)], axis=0)
     else:
-        # For proportional method, use cluster_count as weight_fun directly
+        # For the 'proportional' method, use the cluster counts directly as weights.
         weight_fun = cluster_count
 
-    # Calculate the final sampling number for each category
-    sampling_number = (
-        weight_fun /
-        np.sum(weight_fun) *
-        total_sample_size).astype(int)
+    # Compute the final sampling number for each category.
+    sampling_number = (weight_fun / np.sum(weight_fun) * total_sample_size).astype(int)
     return sampling_number
+
 
 from sklearn.cluster import AgglomerativeClustering
 import leidenalg as la
 import igraph as ig
 import networkx as nx
 
-
 def summary_components(all_components: np.array,
                        num_spin: int,
                        num_repeat: int, 
                        summary_method: str = 'kmeans') -> List[np.array]:
-    '''
-    Summarize components using KMeans clustering algorithm.
+    """
+    Summarize components using a clustering algorithm.
 
-    Parameters:
-    all_components (np.array): A 2D array where each row represents a sample, and each column represents a feature.
-    num_spin (int): The number of clusters.
-    summary_method (str, optional): The method used for summarizing the components. Can use 'kmeans' or 'leiden'. Defaults to 'kmeans'.
+    Parameters
+    ----------
+    all_components : np.array
+        A 2D array where each row represents a sample and each column represents a feature.
+    num_spin : int
+        The number of clusters.
+    num_repeat : int
+        The number of repetitions.
+    summary_method : str, optional
+        The method used for summarizing the components. Options are 'kmeans' or 'leiden'. Default is 'kmeans'.
 
-    Returns:
-    List[np.array]: A list of numpy arrays, each containing the indices of the genes that belong to a specific group or cluster.
-    '''
-
-    # Number of genes (i.e., number of columns in all_components)
+    Returns
+    -------
+    List[np.array]
+        A list of numpy arrays, each containing the indices of the genes that belong to a specific cluster.
+    """
     num_gene = all_components.shape[1]
 
     if summary_method == 'kmeans':
-        # Fit KMeans to components and their transpose
-        kmeans = KMeans(
-            n_clusters=num_spin,
-            random_state=0,
-            n_init=50).fit(all_components)
-        kmeans_gene = KMeans(
-            n_clusters=2 *
-            num_spin,
-            random_state=0,
-            n_init=10).fit(
-            all_components.T)
+        # Fit KMeans clustering to the components and to their transposed version.
+        kmeans = KMeans(n_clusters=num_spin, random_state=0, n_init=50).fit(all_components)
+        kmeans_gene = KMeans(n_clusters=2 * num_spin, random_state=0, n_init=10).fit(all_components.T)
 
-        # Initialize the array to store the average component for each cluster
+        # Initialize an array to store the average component for each cluster.
         components_kmeans = np.zeros((num_spin, num_gene))
 
         for ii in range(num_spin):
-            # Calculate the average component for each cluster
-            components_kmeans[ii] = np.mean(
-                all_components[kmeans.labels_ == ii], axis=0)
+            # Calculate the average component for the current cluster.
+            components_kmeans[ii] = np.mean(all_components[kmeans.labels_ == ii], axis=0)
 
-        # Normalize the components
+        # Normalize the computed components.
         components_kmeans = normalize(components_kmeans, axis=1, norm='l2')
 
         gene_groups_ind = []
         for ii in range(num_spin):
-            # Find which genes belong to which cluster
+            # Determine gene cluster assignments based on the maximum component values.
             gene_groups_ind.append(np.argmax(components_kmeans, axis=0) == ii)
     
     elif summary_method == 'leiden':
