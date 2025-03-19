@@ -17,7 +17,7 @@ import os
 from sklearn.cluster import KMeans
 import scipy.io as sio
 from tqdm import tqdm
-from typing import List, Tuple
+from typing import Tuple, List, Callable, Any, Dict
 
 
 def category_balance_number(
@@ -151,7 +151,7 @@ def summary_components(all_components: np.array,
     return gene_groups_ind
 
 
-def onmf(X: np.array, rank: int, max_iter: int = 500) -> (np.array, np.array):
+def onmf(X: np.array, rank: int, max_iter: int = 500) -> Tuple[np.array, np.array]:
     """
     Perform Orthogonal Non-Negative Matrix Factorization (ONMF) for a given rank.
 
@@ -166,8 +166,9 @@ def onmf(X: np.array, rank: int, max_iter: int = 500) -> (np.array, np.array):
 
     Returns
     -------
-    np.array, np.array
-        Factorized matrices S.T and A.
+    Tuple[np.array, np.array]
+        The factorized matrix S.T.
+        The matrix A.
     """
 
     m, n = X.shape
@@ -247,16 +248,20 @@ def compute_onmf(seed: int,
 
 def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
     """
-    Discretize the representation obtained from ONMF using KMeans clustering and visualize the sorted representations.
+    Discretize the ONMF representation using KMeans clustering and visualize the sorted representations.
 
-    Parameters:
-    onmf_rep_ori (np.array): Original ONMF representation.
-    fig_folder (str): Folder to save the figure.
+    Parameters
+    ----------
+    onmf_rep_ori : np.array
+        Original ONMF representation.
+    fig_folder : str, optional
+        Folder in which to save the figure.
 
-    Returns:
-    np.array: Discretized ONMF representation.
+    Returns
+    -------
+    np.array
+        Discretized ONMF representation.
     """
-
     num_spin = onmf_rep_ori.shape[1]
     sc.set_figure_params(figsize=[2, 2])
     _, grid = sc.pl._tools._panel_grid(
@@ -289,15 +294,18 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
 
 def corr_mean(cur_data: np.array) -> np.array:
     """
-    Calculates the correlation and mean of the given data.
+    Calculate the correlation matrix and mean of the given data.
 
-    Parameters:
-    cur_data (np.array): Input Data Matrix.
+    Parameters
+    ----------
+    cur_data : np.array
+        Input data matrix.
 
-    Returns:
-    np.array: Array containing the correlation matrix and mean of the data.
+    Returns
+    -------
+    np.array
+        Array containing the correlation matrix and the mean of the data.
     """
-
     rec_data = np.zeros(2, dtype=object)
     rec_data[0] = cur_data.T.dot(cur_data) / cur_data.shape[0]
     rec_data[1] = np.mean(cur_data, axis=0).reshape(-1, 1)  
@@ -305,20 +313,23 @@ def corr_mean(cur_data: np.array) -> np.array:
     return rec_data
 
 
-def sample_corr_mean(samp_full: np.array,
-                     comp_bin: np.array) -> (np.array,
-                                             np.array):
+def sample_corr_mean(samp_full: np.array, comp_bin: np.array) -> Tuple[np.array, np.array]:
     """
-    Calculates the correlation mean for each unique sample in samp_full.
+    Calculate the correlation mean for each unique sample in samp_full.
 
-    Parameters:
-    samp_full (np.array): Array of samples.
-    comp_bin (np.array): Binary matrix representation of the samples.
+    Parameters
+    ----------
+    samp_full : np.array
+        Array of samples.
+    comp_bin : np.array
+        Binary matrix representation of the samples.
 
-    Returns:
-    np.array, np.array: Array of correlation mean for each unique sample, and the array of unique samples.
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        An array of correlation means for each unique sample.
+        An array of unique sample labels.
     """
-
     samp_list = np.unique(samp_full)
     raw_corr_data = np.zeros(len(samp_list), dtype=object)
 
@@ -331,7 +342,22 @@ def sample_corr_mean(samp_full: np.array,
 
 
 def sample_states(samp_full: np.array, onmf_rep_tri: np.array) -> Tuple[np.array, np.array]:
+    """
+    Extract the state representations for each unique sample.
 
+    Parameters
+    ----------
+    samp_full : np.array
+        Array of sample labels.
+    onmf_rep_tri : np.array
+        Discretized ONMF representation.
+
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        An array of state representations (transposed) for each unique sample.
+        An array of unique sample labels.
+    """
     samp_list = np.unique(samp_full)
     state_list = np.zeros(len(samp_list), dtype=object)
 
@@ -342,16 +368,23 @@ def sample_states(samp_full: np.array, onmf_rep_tri: np.array) -> Tuple[np.array
 
     return state_list, samp_list
 
-def para_moments(j_mat: np.array, h_vec: np.array) -> (np.array, np.array):
+
+def para_moments(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
     """
-    Calculates the mean and correlation given j network and h vectors.
+    Calculate the correlation and mean parameters given a j matrix and an h vector.
 
-    Parameters:
-    j_mat (np.array): Interaction Matrix.
-    h_vec (np.array): External Field Vector.
+    Parameters
+    ----------
+    j_mat : np.array
+        Interaction matrix.
+    h_vec : np.array
+        External field vector.
 
-    Returns:
-    np.array, np.array: Correlation and mean parameters.
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        The correlation parameter.
+        The mean parameter.
     """
 
     num_spin = j_mat.shape[0]
@@ -414,17 +447,29 @@ def np_mean(array: np.array, axis: int) -> np.array:
 
 
 @numba.jit()
-def pseudol_gradient(cur_j, cur_h, cur_state, directed=False):
+def pseudol_gradient(cur_j: np.ndarray, 
+                     cur_h: np.ndarray, 
+                     cur_state: np.ndarray, 
+                     directed: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute the pseudo-likelihood gradients of j and h.
 
-    Parameters:
-    cur_j (numpy.ndarray): Current j matrix.
-    cur_h (numpy.ndarray): Current h vector.
-    cur_state (numpy.ndarray): Current state matrix.
+    Parameters
+    ----------
+    cur_j : np.ndarray
+        Current j matrix.
+    cur_h : np.ndarray
+        Current h vector.
+    cur_state : np.ndarray
+        Current state matrix.
+    directed : bool, optional
+        Whether to compute directed gradients. Default is False.
 
-    Returns:
-    numpy.ndarray, numpy.ndarray: Gradients of j and h.
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        The gradient of j.
+        The gradient of h.
     """
     num_spin = cur_j.shape[0]
 
@@ -462,19 +507,32 @@ def pseudol_gradient(cur_j, cur_h, cur_state, directed=False):
 
 
 @numba.njit()
-def samp_moments(j_mat, h_vec, sample_size, mixing_time, samp_gap):
+def samp_moments(j_mat: np.ndarray, 
+                 h_vec: np.ndarray, 
+                 sample_size: int, 
+                 mixing_time: int, 
+                 samp_gap: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     Sample moments for the Markov Chain Monte Carlo (MCMC).
 
-    Parameters:
-    j_mat (numpy.ndarray): j matrix.
-    h_vec (numpy.ndarray): h vector.
-    sample_size (int): Size of the sample.
-    mixing_time (int): Mixing time for the MCMC.
-    samp_gap (int): Gap between samples.
+    Parameters
+    ----------
+    j_mat : np.ndarray
+        Interaction matrix.
+    h_vec : np.ndarray
+        External field vector.
+    sample_size : int
+        Size of the sample.
+    mixing_time : int
+        Mixing time for the MCMC.
+    samp_gap : int
+        Gap between samples.
 
-    Returns:
-    numpy.ndarray, numpy.ndarray: Correlation parameter and mean parameter.
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        The correlation parameter.
+        The mean parameter.
     """
     per_batch = int(1e5)
     num_spin = j_mat.shape[0]
@@ -543,20 +601,32 @@ def samp_moments(j_mat, h_vec, sample_size, mixing_time, samp_gap):
     return corr_para, mean_para
 
 
-def compute_gradient(cur_j, cur_h, raw_data, method, train_dat):
+def compute_gradient(cur_j: np.ndarray, 
+                     cur_h: np.ndarray, 
+                     raw_data: List[Tuple[np.ndarray, np.ndarray]], 
+                     method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute the gradient based on the specified method.
 
-    Parameters:
-    cur_j (numpy.ndarray): Current j matrix.
-    cur_h (numpy.ndarray): Current h matrix.
-    raw_data (list): The raw data used to calculate the gradient.
-    method (str): The method used to calculate the gradient. Possible values are 'pseudo_likelihood',
-                  'maximum_likelihood', and 'mcmc_maximum_likelihood'.
-    train_dat (dict): Training data information.
+    Parameters
+    ----------
+    cur_j : np.ndarray
+        Current j matrix.
+    cur_h : np.ndarray
+        Current h matrix.
+    raw_data : List[Tuple[np.ndarray, np.ndarray]]
+        Raw data used to calculate the gradient (each element is a tuple of correlation and mean).
+    method : str
+        The method to calculate the gradient; possible values are 'pseudo_likelihood',
+        'maximum_likelihood', and 'mcmc_maximum_likelihood'.
+    train_dat : Dict[str, Any]
+        Training data and hyperparameters.
 
-    Returns:
-    numpy.ndarray, numpy.ndarray: Gradients of j and h.
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        The gradient of j.
+        The gradient of h.
     """
     num_spin, num_round = cur_h.shape
 
@@ -586,19 +656,35 @@ def compute_gradient(cur_j, cur_h, raw_data, method, train_dat):
     return rec_jgrad, rec_hgrad
 
 
-def apply_regularization(rec_jgrad, rec_hgrad, cur_j, cur_h, train_dat, print_regu=False):
+def apply_regularization(rec_jgrad: np.ndarray, 
+                         rec_hgrad: np.ndarray, 
+                         cur_j: np.ndarray, 
+                         cur_h: np.ndarray, 
+                         train_dat: Dict[str, Any], 
+                         print_regu: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     """
     Apply regularization to the gradients.
 
-    Parameters:
-    rec_jgrad (numpy.ndarray): Gradients of j matrix.
-    rec_hgrad (numpy.ndarray): Gradients of h matrix.
-    cur_j (numpy.ndarray): Current j matrix.
-    cur_h (numpy.ndarray): Current h matrix.
-    train_dat (dict): Training data information.
+    Parameters
+    ----------
+    rec_jgrad : np.ndarray
+        Gradients of j matrix.
+    rec_hgrad : np.ndarray
+        Gradients of h matrix.
+    cur_j : np.ndarray
+        Current j matrix.
+    cur_h : np.ndarray
+        Current h matrix.
+    train_dat : Dict[str, Any]
+        Training data and hyperparameters.
+    print_regu : bool, optional
+        If True, print regularization parameters. Default is False.
 
-    Returns:
-    numpy.ndarray, numpy.ndarray: Regularized gradients of j and h.
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        Regularized gradients of j.
+        Regularized gradients of h.
     """
     num_spin, num_round = cur_h.shape
 
