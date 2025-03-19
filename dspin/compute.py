@@ -386,7 +386,6 @@ def para_moments(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
         The correlation parameter.
         The mean parameter.
     """
-
     num_spin = j_mat.shape[0]
     num_sample = 3 ** num_spin
     sample_indices = np.indices((3,) * num_spin)
@@ -411,19 +410,26 @@ def para_moments(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
 
 
 @numba.njit
-def np_apply_along_axis(func1d, axis, arr):
+def np_apply_along_axis(func1d: Callable[[np.ndarray], float], 
+                        axis: int, 
+                        arr: np.ndarray) -> np.ndarray:
     """
     Applies a function along the specified axis.
 
-    Parameters:
-    func1d: 1-D Function to be applied.
-    axis (int): Axis along which function should be applied.
-    arr (np.array): Input Array.
+    Parameters
+    ----------
+    func1d : Callable[[np.ndarray], float]
+        A 1-D function to be applied.
+    axis : int
+        Axis along which the function should be applied.
+    arr : np.ndarray
+        Input array.
 
-    Returns:
-    np.array: The result of applying func1d to arr along the specified axis.
+    Returns
+    -------
+    np.ndarray
+        The result of applying func1d to arr along the specified axis.
     """
-
     assert arr.ndim == 2
     assert axis in [0, 1]
     result = np.empty(arr.shape[1]) if axis == 0 else np.empty(arr.shape[0])
@@ -737,30 +743,42 @@ def apply_regularization(rec_jgrad: np.ndarray,
     return rec_jgrad, rec_hgrad
 
 
-def update_adam(
-        gradient,
-        m,
-        v,
-        counter,
-        stepsz,
-        beta1=0.9,
-        beta2=0.999,
-        epsilon=1e-8):
+def update_adam(gradient: np.ndarray, 
+                m: np.ndarray, 
+                v: np.ndarray, 
+                counter: int, 
+                stepsz: float, 
+                beta1: float = 0.9, 
+                beta2: float = 0.999, 
+                epsilon: float = 1e-8) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Adam optimizer update rule.
 
-    Parameters:
-    gradient (numpy.ndarray): The gradient of the objective function.
-    m (numpy.ndarray): 1st moment vector (moving average of the gradients).
-    v (numpy.ndarray): 2nd moment vector (moving average of the gradient squared).
-    counter (int): The current time step or epoch.
-    stepsz (float): Step size or learning rate.
-    beta1 (float, optional): The exponential decay rate for the 1st moment vector.
-    beta2 (float, optional): The exponential decay rate for the 2nd moment vector.
-    epsilon (float, optional): Small constant to prevent division by zero.
+    Parameters
+    ----------
+    gradient : np.ndarray
+        The gradient of the objective function.
+    m : np.ndarray
+        1st moment vector (moving average of the gradients).
+    v : np.ndarray
+        2nd moment vector (moving average of the gradient squared).
+    counter : int
+        The current time step or epoch.
+    stepsz : float
+        Step size or learning rate.
+    beta1 : float, optional
+        The exponential decay rate for the 1st moment vector.
+    beta2 : float, optional
+        The exponential decay rate for the 2nd moment vector.
+    epsilon : float, optional
+        Small constant to prevent division by zero.
 
-    Returns:
-    numpy.ndarray, numpy.ndarray, numpy.ndarray: The updated parameters (update, m, v).
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, np.ndarray]
+        The update value.
+        The updated first moment vector.
+        The updated second moment vector.
     """
     # Update biased first moment estimate and biased second raw moment estimate
     m = beta1 * m + (1 - beta1) * gradient
@@ -777,17 +795,27 @@ def update_adam(
     return update, m, v
 
 
-def learn_network_adam(raw_data, method, train_dat):
+def learn_network_adam(raw_data: Any, 
+                       method: str, 
+                       train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """
-    Train the network using Adam optimizer.
+    Train the network using the Adam optimizer.
 
-    Parameters:
-    raw_data (object): The input data.
-    method (str): The chosen method for training.
-    train_dat (dict): Dictionary containing training data and hyperparameters.
+    Parameters
+    ----------
+    raw_data : Any
+        The input data.
+    method : str
+        The chosen method for training.
+    train_dat : Dict[str, Any]
+        Dictionary containing training data and hyperparameters.
 
-    Returns:
-    numpy.ndarray, numpy.ndarray: The trained network parameters (cur_j, cur_h).
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, dict]
+        The trained j matrix.
+        The trained h matrix.
+        The training log.
     """
     # Retrieve training parameters and data
     num_spin, num_round = train_dat['cur_h'].shape
@@ -905,35 +933,28 @@ def learn_network_adam(raw_data, method, train_dat):
     return cur_j, cur_h, train_log
 
 
-
-def learn_program_regulators(gene_states, program_states, train_dat):
+def learn_program_regulators(gene_states: np.array[np.ndarray],
+                             program_states: np.array[np.ndarray],
+                             train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Discover regulators for gene programs via regression.
     
     Parameters
     ----------
-    gene_states : list of np.ndarray
-        Each element is a gene state array of shape (n_spin, T),
-        where T may vary across samples.
-    program_states : list of np.ndarray
-        Each element is a program state array of shape (n_target, T).
-    train_dat : dict
-        Dictionary of training parameters. Expected keys (with defaults):
-          - 'num_epoch': int, default 300
-          - 'stepsz': float, default 0.01
-          - 'decay': float, default 0.2 (not explicitly used here)
-          - 'interaction_l1': float, default 0.01
+    gene_states : np.array[np.ndarray]
+        Array of gene states. 
+    program_states : np.array[np.ndarray]
+        Array of program states.
+    train_dat : Dict[str, Any]
+        Dictionary of training parameters. 
           
     Returns
     -------
-    cur_interaction : np.ndarray
-        Learned interaction matrix of shape (n_spin, n_target).
-    cur_selfj : np.ndarray
-        Learned self-interaction (regulator-specific bias) of shape (n_target,).
-    cur_selfh : np.ndarray
-        Learned program activity bias of shape (n_target,).
+    Tuple[np.ndarray, np.ndarray, np.ndarray]
+        The learned interaction matrix of shape (n_spin, n_target).
+        The learned self-interaction (regulator-specific bias) of shape (n_target,).
+        The learned program activity bias of shape (n_target,).
     """
-
     num_gene = gene_states[0].shape[0]
     num_program = program_states[0].shape[0]
     num_round = len(gene_states)
@@ -1050,23 +1071,29 @@ def learn_program_regulators(gene_states, program_states, train_dat):
     return cur_interaction, cur_selfj, cur_selfh
 
 
-def compute_relative_responses(cur_h, if_control, batch_index):
+def compute_relative_responses(cur_h: np.ndarray, 
+                               if_control: np.ndarray, 
+                               batch_index: np.ndarray) -> np.ndarray:
     """
     Compute the relative responses of samples by subtracting the average of control samples.
     This function calculates the relative responses for a set of samples by comparing each sample's response 
     to the average response of control samples. The control samples can be specific to the batch a sample belongs to, 
     or a global set of control samples if no control samples are present in the batch.
 
-    Parameters:
-    cur_h (numpy.ndarray): A 2D array where each column represents a sample and each row represents a feature.
-    if_control (numpy.ndarray): A boolean array indicating which samples are control samples.
-    batch_index (numpy.ndarray): An array indicating the batch assignment for each sample.
+    Parameters
+    ----------
+    cur_h : np.ndarray
+        A 2D array where each column represents a sample and each row represents a feature.
+    if_control : np.ndarray
+        A boolean array indicating which samples are control samples.
+    batch_index : np.ndarray
+        An array indicating the batch assignment for each sample.
 
-    Returns:
-    numpy.ndarray: A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
+    Returns
+    -------
+    np.ndarray
+        A 2D array of the same shape as `cur_h`, containing the relative responses for each sample.
     """
-    
-
     unique_batches = np.unique(batch_index)
     num_batches = len(unique_batches)
 
@@ -1092,19 +1119,24 @@ def compute_relative_responses(cur_h, if_control, batch_index):
     return relative_h
 
 
-def select_representative_sample(raw_data, num_select):
+def select_representative_sample(raw_data: List[Tuple[np.ndarray, np.ndarray]], 
+                                 num_select: int) -> List[int]:
     """
     Select representative samples by performing KMeans clustering on the samples'
     correlation and mean vectors and selecting the sample closest to the cluster center.
     
-    Parameters:
-    raw_data (list): A list of correlation and mean vectors for each sample.
-    num_select (int): The number of representative samples to select.
+    Parameters
+    ----------
+    raw_data : List[Tuple[np.ndarray, np.ndarray]]
+        A list of tuples, each containing the correlation and mean vectors for a sample.
+    num_select : int
+        The number of representative samples to select.
 
-    Returns:
-    list: A list of indices of the selected representative samples.
+    Returns
+    -------
+    List[int]
+        A list of indices of the selected representative samples.
     """
-
     num_spin = raw_data[0][0].shape[1]
     num_samp = len(raw_data)
     raw_data_cat_vec = np.zeros([num_samp, int(num_spin * (num_spin + 3) / 2)])
