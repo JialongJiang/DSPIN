@@ -18,6 +18,8 @@ from sklearn.cluster import KMeans
 import scipy.io as sio
 from tqdm import tqdm
 from typing import Tuple, List, Callable, Any, Dict
+import warnings
+from scipy.sparse import issparse
 
 
 def category_balance_number(
@@ -74,7 +76,6 @@ import networkx as nx
 
 def summary_components(all_components: np.array,
                        num_spin: int,
-                       num_repeat: int, 
                        summary_method: str = 'kmeans') -> List[np.array]:
     """
     Summarize components using a clustering algorithm.
@@ -85,8 +86,6 @@ def summary_components(all_components: np.array,
         A 2D array where each row represents a sample and each column represents a feature.
     num_spin : int
         The number of clusters.
-    num_repeat : int
-        The number of repetitions.
     summary_method : str, optional
         The method used for summarizing the components. Options are 'kmeans' or 'leiden'. Default is 'kmeans'.
 
@@ -119,7 +118,7 @@ def summary_components(all_components: np.array,
     
     elif summary_method == 'leiden':
 
-        consensus = np.einsum('ij,ik->jk', all_components, all_components) / num_repeat
+        consensus = np.einsum('ij,ik->jk', all_components, all_components) / all_components.shape[0]
         consensus_filt = np.where(np.max(consensus, axis=0) > np.percentile(consensus.flatten(), 99))[0]
         consensus_sub = consensus[:, consensus_filt][consensus_filt]
 
@@ -195,7 +194,7 @@ def onmf(X: np.array, rank: int, max_iter: int = 500) -> Tuple[np.array, np.arra
         # progress bar
         if itr % 10 == 0:
             error = np.linalg.norm(X - np.dot(A, S), 'fro')
-            pbar.set_postfix({"Reconstruction Error": f"{error:.2f}"})
+            pbar.set_postfix({"Reconstruction error": f"{error:.2f}"})
 
     pbar.close()
 
@@ -285,11 +284,122 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
 
     # Save the visual representation
     if fig_folder is not None:
-        print('Saving the example state partition figure to ' + fig_folder + '/onmf_discretize.png')
+        print('Saving the example state partition figure to ' + fig_folder + 'onmf_discretize.png')
         plt.savefig(f'{fig_folder}/onmf_discretize.png', bbox_inches='tight')
         plt.close()
 
     return onmf_rep_tri
+
+
+def compute_onmf_decomposition(gene_matrix_norm: np.ndarray,
+                               num_onmf_components: int,
+                               seed: int = 0,
+                               params: dict = None,
+                               save_path: str = None) -> None:
+    """
+    Perform multiple oNMF decompositions on subsampled data to enhance stability.
+
+    Parameters
+    ----------
+    gene_matrix_norm : np.ndarray
+        Normalized gene expression matrix.
+    num_onmf_components : int
+        Number of oNMF components.
+    seed : int, optional
+        Random seed for reproducibility. Default is 0.
+    params : dict, optional
+        Additional parameters for oNMF. Default is None.
+    save_path : str, optional
+        Path to save the oNMF decomposition results. Default is None.
+    """
+    np.random.seed(seed)
+    print(f'Computing oNMF decomposition of seed {seed}')
+
+    # Check if oNMF decomposition for the current iteration exists
+    if os.path.exists(save_path):
+        print("oNMF decomposition with seed {} already exists. Skipping...".format(seed))
+        return
+    
+    # Compute current oNMF decomposition and save the result
+    current_onmf = compute_onmf(
+        seed, num_onmf_components, gene_matrix_norm, max_iter=params['onmf_epoch_number'])
+    np.save(save_path, current_onmf)
+        
+
+def subsample_normalize_gene_matrix(gene_matrix: np.ndarray,
+                                    cluster_label: np.ndarray,
+                                    num_subsample: int = 10000,
+                                    seed: int = 0,
+                                    params: dict = None) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Subsample and balance the gene matrix based on desired sample size and standard deviation clipping.
+
+        Parameters
+        ----------
+        gene_matrix : np.ndarray
+            The gene expression matrix.
+        cluster_label : np.ndarray
+            Labels for clustering.
+        num_subsample : int, optional
+            Number of samples to subsample. Default is 10000.
+        seed : int, optional
+            Seed for reproducibility. Default is 0.
+        params : dict, optional
+            Additional parameters for subsampling and balancing. Default is None.
+
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray]
+            Tuple containing the standard deviation of the subsampled matrix and the normalized gene matrix.
+        """
+        np.random.seed(seed)
+
+        num_cell, num_gene = gene_matrix.shape
+
+        method = params['balance_method']
+        maximum_sample_rate = params['max_sample_rate']
+        std_clip_percentile = params['std_clip_percentile']
+        min_cluster_size = params['min_cluster_size']
+
+        # If no balancing is required, simply subsample the matrix
+        if method is None:
+            gene_matrix_balanced = gene_matrix[np.random.choice(
+                num_cell, num_subsample, replace=False), :]
+        else:
+            cluster_list, cluster_count = np.unique(cluster_label, return_counts=True)
+
+            # Filter out clusters smaller than the minimum size
+            if np.any(cluster_count < min_cluster_size):
+                use_cluster = cluster_list[cluster_count >= min_cluster_size]
+                filt_ind = np.isin(cluster_label, use_cluster)
+                gene_matrix = gene_matrix[filt_ind, :]
+                cluster_label = cluster_label[filt_ind]
+                cluster_list, cluster_count = np.unique(cluster_label, return_counts=True)
+
+                warnings.warn("Clusters smaller than {} cells are filtered out.".format(min_cluster_size))
+
+            sampling_number = category_balance_number(num_subsample, cluster_count, method, maximum_sample_rate)
+
+            gene_matrix_balanced = np.zeros(
+                (np.sum(sampling_number), num_gene))
+
+            for ii in range(len(cluster_list)):
+                cur_num = sampling_number[ii]
+                cur_filt = cluster_label == cluster_list[ii]
+                sele_ind = np.random.choice(np.sum(cur_filt), cur_num)
+                strart_ind = np.sum(sampling_number[:ii])
+                end_ind = strart_ind + cur_num
+
+                if issparse(gene_matrix):
+                    gene_matrix_balanced[strart_ind: end_ind, :] = gene_matrix[cur_filt, :][sele_ind, :].toarray()
+                else:
+                    gene_matrix_balanced[strart_ind: end_ind, :] = gene_matrix[cur_filt, :][sele_ind, :]
+
+        std = gene_matrix_balanced.std(axis=0)
+        std_clipped = std.clip(np.percentile(std, std_clip_percentile), np.inf)
+        gene_matrix_balanced_normalized = gene_matrix_balanced / std_clipped
+
+        return std_clipped, gene_matrix_balanced_normalized
 
 
 def corr_mean(cur_data: np.array) -> np.array:
@@ -933,17 +1043,17 @@ def learn_network_adam(raw_data: Any,
     return cur_j, cur_h, train_log
 
 
-def learn_program_regulators(gene_states: np.array[np.ndarray],
-                             program_states: np.array[np.ndarray],
+def learn_program_regulators(gene_states: List[np.ndarray],
+                             program_states: List[np.ndarray],
                              train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Discover regulators for gene programs via regression.
     
     Parameters
     ----------
-    gene_states : np.array[np.ndarray]
+    gene_states : List[np.ndarray]
         Array of gene states. 
-    program_states : np.array[np.ndarray]
+    program_states : List[np.ndarray]
         Array of program states.
     train_dat : Dict[str, Any]
         Dictionary of training parameters. 

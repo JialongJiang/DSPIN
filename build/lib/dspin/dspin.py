@@ -11,8 +11,8 @@ from .compute import (
     sample_states,
     learn_network_adam,
     learn_program_regulators,
-    category_balance_number,
-    compute_onmf,
+    compute_onmf_decomposition,
+    subsample_normalize_gene_matrix,
     summary_components,
     compute_relative_responses
 )
@@ -21,6 +21,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scanpy as sc
 import anndata as ad
+import pandas as pd
 import os
 from sklearn.cluster import KMeans
 from sklearn.decomposition import NMF
@@ -33,7 +34,6 @@ import matplotlib.patheffects as patheffects
 import warnings
 import itertools
 from typing import List, Dict, Optional, Tuple, Union
-
 
 
 class AbstractDSPIN(ABC):
@@ -480,123 +480,10 @@ class ProgramDSPIN(AbstractDSPIN):
     def onmf_decomposition(self, value):
         self._onmf_summary = value
 
-    def subsample_matrix_balance(self,
-                                 total_sample_size: int,
-                                 std_clip_percentile: float = 20) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Subsample and balance the gene matrix based on desired sample size and standard deviation clipping.
-
-        Parameters
-        ----------
-        total_sample_size : int
-            The target number of cells after subsampling.
-        std_clip_percentile : float, optional
-            Percentile for standard deviation clipping, default is 20.
-
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray]
-            Clipped standard deviations and the balanced, normalized gene matrix.
-        """
-        gene_matrix = self.adata.X
-        cadata = self.adata
-        num_cell, num_gene = gene_matrix.shape
-
-        balance_by = self.balance_obs
-        method = self.balance_method
-        maximum_sample_rate = self.max_sample_rate
-
-        # If no balancing is required, simply subsample the matrix
-        if method is None:
-            gene_matrix_balanced = gene_matrix[np.random.choice(
-                num_cell, total_sample_size, replace=False), :]
-        else:
-            cluster_list = list(cadata.obs[balance_by].value_counts().keys())
-            cluster_count = list(cadata.obs[balance_by].value_counts())
-
-            sampling_number = category_balance_number(
-                total_sample_size, cluster_count, method, maximum_sample_rate)
-
-            gene_matrix_balanced = np.zeros(
-                (np.sum(sampling_number), cadata.X.shape[1]))
-
-            for ii in range(len(cluster_list)):
-                cur_num = sampling_number[ii]
-                cur_filt = cadata.obs[balance_by] == cluster_list[ii]
-                sele_ind = np.random.choice(np.sum(cur_filt), cur_num)
-                strart_ind = np.sum(sampling_number[:ii])
-                end_ind = strart_ind + cur_num
-                if issparse(cadata.X):
-                    gene_matrix_balanced[strart_ind: end_ind, :] = cadata.X[cur_filt, :][sele_ind, :].toarray()
-                else:
-                    gene_matrix_balanced[strart_ind: end_ind, :] = cadata.X[cur_filt, :][sele_ind, :]
-
-        # Normalize the matrix by standard deviation
-        if issparse(gene_matrix_balanced):
-            gene_matrix_balanced = np.asarray(gene_matrix_balanced.toarray())
-
-        std = gene_matrix_balanced.std(axis=0)
-        std_clipped = std.clip(np.percentile(std, std_clip_percentile), np.inf)
-        gene_matrix_balanced_normalized = gene_matrix_balanced / std_clipped
-
-        return std_clipped, gene_matrix_balanced_normalized
-
-    def compute_onmf_repeats(self,
-                             num_onmf_components: int,
-                             num_repeat: int,
-                             num_subsample: int,
-                             seed: int = 0,
-                             std_clip_percentile: float = 20) -> None:
-        """
-        Perform multiple oNMF decompositions on subsampled data to enhance stability.
-
-        Parameters
-        ----------
-        num_onmf_components : int
-            Number of oNMF components.
-        num_repeat : int
-            Number of repetitions for oNMF computation.
-        num_subsample : int
-            Number of cells to use while computing the oNMF
-        seed : int, optional
-            Seed for reproducibility. Default is 0.
-        std_clip_percentile : float, optional
-            Percentile for standard deviation clipping. Default is 20.
-        """
-
-        prior_programs = self.prior_programs
-        adata = self.adata
-        
-        # Create the directory for saving oNMF decompositions if it doesn't
-        # exist
-        os.makedirs(self.save_path + 'onmf/', exist_ok=True)
-
-        print("Computing oNMF decomposition...")
-
-        # Repeat oNMF decomposition for num_repeat times
-        for ii in range(num_repeat):
-            np.random.seed(seed + ii)
-            # Check if oNMF decomposition for the current iteration exists
-            if os.path.exists(
-                    self.save_path + 'onmf/onmf_rep_{}_{}.npy'.format(num_onmf_components, ii)):
-                print(
-                    "oNMF decomposition {} already exists. Skipping...".format(ii))
-                continue
-
-            # Subsample the matrix and normalize it
-            _, gene_matrix_norm = self.subsample_matrix_balance(
-                num_subsample, std_clip_percentile=std_clip_percentile)
-
-            # Compute current oNMF decomposition and save the result
-            current_onmf = compute_onmf(
-                seed + ii, num_onmf_components, gene_matrix_norm[:, self.prior_programs_mask])
-            np.save(self.save_path +
-                    'onmf/onmf_rep_{}_{}.npy'.format(num_onmf_components, ii), current_onmf)
-
     def summarize_onmf_result(self,
+                              large_subsample_matrix: np.ndarray,
                               num_onmf_components: int,
-                              num_repeat: int,
-                              summary_method: str) -> NMF:
+                              num_repeat: int) -> NMF:
         """
         Summarize the results of repeated oNMF decompositions,
         integrating components from each oNMF run and prior programs if available.
@@ -607,8 +494,6 @@ class ProgramDSPIN(AbstractDSPIN):
             Number of oNMF components.
         num_repeat : int
             Number of oNMF repetitions.
-        summary_method : str
-            The method used for summarizing oNMF components.
 
         Returns
         -------
@@ -620,62 +505,47 @@ class ProgramDSPIN(AbstractDSPIN):
         num_spin = self.num_spin
         adata = self.adata
         prior_programs_mask = self.prior_programs_mask
+        seed_list = self.onmf_parameters['seed_list']
+        summary_method = self.onmf_parameters['summary_method']
 
-        rec_components = np.zeros(
-            (num_repeat, num_onmf_components, np.sum(prior_programs_mask)))
+        rec_components = np.zeros((num_repeat, num_onmf_components, np.sum(prior_programs_mask)))
 
         for ii in range(num_repeat):
-            cur_onmf = np.load(
-                self.save_path +
-                'onmf/onmf_rep_{}_{}.npy'.format(num_onmf_components, ii),
-                allow_pickle=True).item()
+
+            cur_seed = seed_list[ii]
+            cur_onmf = np.load(self.save_path + f'onmf/onmf_components_{num_onmf_components}_repeat_{cur_seed}.npy', allow_pickle=True).item()
             rec_components[ii] = cur_onmf.components_
 
         all_components = rec_components.reshape(-1, np.sum(prior_programs_mask))
 
-        gene_group_ind = summary_components(
-            all_components,
-            num_onmf_components,
-            num_repeat,
-            summary_method=summary_method)
+        gene_group_ind = summary_components(all_components, num_onmf_components, summary_method=summary_method)
 
         # Mask the prior programs and add them to the gene group indices
         sub_mask_ind = np.where(prior_programs_mask)[0]
-        gene_group_ind = [sub_mask_ind[gene_list]
-                          for gene_list in gene_group_ind]
+        gene_group_ind = [sub_mask_ind[gene_list] for gene_list in gene_group_ind]
         gene_group_ind += self.prior_programs_ind
 
         # Initialize and compute the summary matrix
         components_summary = np.zeros((num_spin, adata.shape[1]))
         for ii in range(num_spin):
-            sub_matrix = self.large_subsample_matrix[:, gene_group_ind[ii]]
-            sub_onmf = NMF(
-                n_components=1,
-                init='random',
-                random_state=0).fit(sub_matrix)
+            sub_matrix = large_subsample_matrix[:, gene_group_ind[ii]]
+            sub_onmf = NMF(n_components=1, init='random', random_state=0).fit(sub_matrix)
             components_summary[ii, gene_group_ind[ii]] = sub_onmf.components_
 
         # Normalize the summary components and finalize the onmf_summary object
         components_summary = normalize(components_summary, axis=1, norm='l2')
-        onmf_summary = NMF(
-            n_components=num_spin,
-            init='random',
-            random_state=0)
+        onmf_summary = NMF(n_components=num_spin, init='random', random_state=0)
         onmf_summary.components_ = components_summary
 
         return onmf_summary
 
     def gene_program_discovery(self,
-                               num_onmf_components: int = None,
-                               num_subsample: int = 10000,
-                               num_subsample_large: int = None,
                                num_repeat: int = 10,
                                seed: int = 0,
-                               balance_obs: str = None,
-                               balance_method: str = None,
-                               max_sample_rate: float = 2,
+                               cluster_key: str = 'leiden',
+                               mode: str = 'compute_summary',
                                prior_programs: List[List[str]] = None,
-                               summary_method: str = 'kmeans'):
+                               params: dict = {}) -> None:
         """
         Discover gene programs by performing oNMF decomposition on the annotated data.
 
@@ -703,95 +573,95 @@ class ProgramDSPIN(AbstractDSPIN):
             Method to summarize oNMF components. Default is 'kmeans'.
         """
 
-        if balance_method not in ['equal', 'proportional', 'squareroot', None]:
+        if mode not in ['compute_summary', 'compute_only', 'summary_only']:
             raise ValueError(
-                'balance_method must be one of equal, proportional, squareroot, or None')
-
-        if summary_method not in ['kmeans', 'leiden']:
-            raise ValueError('summary_method must be one of kmeans or leiden')
-
+                'Mode must be one of compute_summary, compute_only, or summary_only')
+        
         adata = self.adata
         num_spin = self.num_spin
 
-        if num_subsample_large is None:
-            num_subsample_large = min(num_subsample * 5, self.adata.shape[0])
+        onmf_parameters = {'num_onmf_components': num_spin,
+                           'num_subsample': 10000,
+                           'num_subsample_large': None,
+                           'balance_method': 'squareroot',
+                           'max_sample_rate': 2,
+                           'summary_method': 'kmeans',
+                           'std_clip_percentile': 20,
+                           'min_cluster_size': 20,
+                           'onmf_epoch_number': 500,
+                           'seed_list': seed + np.arange(num_repeat)}
+        
+        onmf_parameters.update(params)
+        
+        if onmf_parameters['num_subsample_large'] is None:
+            onmf_parameters['num_subsample_large'] = min(onmf_parameters['num_subsample'] * 5, adata.shape[0])
 
-        # Set default balance method if balance_obs is provided but
-        # balance_method is None
-        if (balance_obs is not None) & (balance_method is None):
-            balance_method = 'squareroot'
+        if onmf_parameters['balance_method'] not in ['equal', 'proportional', 'squareroot', None]:
+            raise ValueError('balance_method must be one of equal, proportional, squareroot, or None')
 
-        self.balance_obs = balance_obs
-        self.balance_method = balance_method
-        self.max_sample_rate = max_sample_rate
-        self.prior_programs = prior_programs
+        if onmf_parameters['summary_method'] not in ['kmeans', 'leiden']:
+            raise ValueError('summary_method must be one of kmeans or leiden')
 
         # Process prior programs if provided and validate against num_spin
         if prior_programs is not None:
-            prior_program_ind = [
-                [np.where(adata.var_names == gene)[0][0] for gene in gene_list]
-                for gene_list in prior_programs]
-            preprogram_flat = [
-                gene for program in prior_programs for gene in program]
+            prior_program_ind = [[np.where(adata.var_names == gene)[0][0] for gene in gene_list] for gene_list in prior_programs]
+            preprogram_flat = [gene for program in prior_programs for gene in program]
             if len(prior_programs) > num_spin:
-                raise ValueError(
-                    'Number of prior_programs must be less than the number of spins')
-
-            # Generate mask to exclude genes in prior programs from the
-            # annotated data
+                raise ValueError('Number of prior_programs must be less than the number of spins')
+            # Generate mask to exclude genes in prior programs from the annotated data
             prior_program_mask = ~ np.isin(adata.var_names, preprogram_flat)
+            onmf_parameters['num_onmf_components'] -= len(prior_programs)
         else:
             prior_program_mask = np.ones(adata.shape[1], dtype=bool)
             prior_program_ind = []
 
-        # number of oNMF components = number of spins - number of prior
-        # programs
-        if num_onmf_components is None:
-            num_onmf_components = self.num_spin - len(prior_program_ind)
-
+        # number of oNMF components = number of spins - number of prior programs
+        self.onmf_parameters = onmf_parameters 
         self.prior_programs_mask = prior_program_mask
         self.prior_programs_ind = prior_program_ind
 
-        np.random.seed(seed)
-        # Perform subsampling and standard deviation clipping on the matrix
-        self.matrix_std, self.large_subsample_matrix = self.subsample_matrix_balance(
-            num_subsample_large, std_clip_percentile=20)
+        num_onmf_components = onmf_parameters['num_onmf_components']
+        
+        if mode == 'compute_summary' or mode == 'compute_only':
 
-        # Compute oNMF decompositions repeatedly
-        self.compute_onmf_repeats(
-            num_onmf_components,
-            num_repeat,
-            num_subsample,
-            seed,
-            std_clip_percentile=20)
+            os.makedirs(self.save_path + 'onmf/', exist_ok=True)
 
-        # Summarize the oNMF decompositions
-        onmf_summary = self.summarize_onmf_result(
-            num_onmf_components, num_repeat, summary_method)
-        self._onmf_summary = onmf_summary
+            cur_gene_matrix = adata.X[:, prior_program_mask]
+            cluster_label_raw = adata.obs[cluster_key].values
+            cluster_label = pd.factorize(cluster_label_raw)[0]
 
-        # Save the gene programs to a CSV file
-        file_path = onmf_to_csv(
-            onmf_summary.components_,
-            adata.var_names,
-            self.save_path +
-            'gene_programs_{}_{}_{}.csv'.format(
-                len(prior_program_ind),
-                num_onmf_components,
-                num_spin),
-            thres=0.01)
-        print('Gene programs saved to {}'.format(file_path))
-        self.gene_program_csv = file_path
+            for rep in range(num_repeat):
+                
+                cur_seed = onmf_parameters['seed_list'][rep]
 
-        gene_matrix = self.adata.X
-        if issparse(gene_matrix):
-            gene_matrix = np.asarray(gene_matrix.toarray()).astype(np.float64)
-        # Transform the original matrix by the oNMF summary components and
-        # normalize by standard deviation
-        self._onmf_rep_ori = onmf_summary.transform(
-            gene_matrix / self.matrix_std)
+                std_clipped, sub_gene_matrix_normed = subsample_normalize_gene_matrix(cur_gene_matrix, cluster_label, num_subsample=onmf_parameters['num_subsample'], seed=cur_seed, params=onmf_parameters)
 
-        self.discretize()
+                compute_onmf_decomposition(sub_gene_matrix_normed, num_onmf_components, seed=cur_seed, params=onmf_parameters, save_path=self.save_path + f'onmf/onmf_components_{num_onmf_components}_repeat_{cur_seed}.npy')
+            
+        if mode == 'compute_summary' or mode == 'summary_only':
+
+            # Perform subsampling and standard deviation clipping on the matrix
+            std_clipped, sub_large_gene_matrix_normed = subsample_normalize_gene_matrix(cur_gene_matrix, cluster_label, num_subsample=onmf_parameters['num_subsample_large'], seed=seed + rep, params=onmf_parameters)
+            self.matrix_std = std_clipped
+            
+            # Summarize the oNMF decompositions
+            onmf_summary = self.summarize_onmf_result(sub_large_gene_matrix_normed, num_onmf_components, num_repeat)
+            
+            self._onmf_summary = onmf_summary
+
+            # Save the gene programs to a CSV file
+            file_path = onmf_to_csv(onmf_summary.components_, adata.var_names, self.save_path + f'gene_programs_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}.csv', thres=0.01)
+            print('Gene programs saved to {}'.format(file_path))
+            self.gene_program_csv = file_path
+
+            gene_matrix = self.adata.X
+            if issparse(gene_matrix):
+                gene_matrix = np.asarray(gene_matrix.toarray()).astype(np.float64)
+            # Transform the original matrix by the oNMF summary components and normalize by standard deviation
+            self._onmf_rep_ori = onmf_summary.transform(
+                gene_matrix / self.matrix_std)
+
+            self.discretize()
 
 
 class DSPIN(object):
@@ -852,3 +722,5 @@ class DSPIN(object):
         # otherwise, use ProgramDSPIN because oNMF is needed
         else:
             return ProgramDSPIN(adata, save_path, num_spin=num_spin, **kwargs)
+
+
