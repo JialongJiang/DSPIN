@@ -204,7 +204,7 @@ class AbstractDSPIN(ABC):
             self._raw_data = raw_data
 
         num_sample = len(raw_data)
-        params = {'num_epoch': 200,
+        params = {'num_epoch': 400,
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path, 
@@ -518,7 +518,7 @@ class ProgramDSPIN(AbstractDSPIN):
 
         all_components = rec_components.reshape(-1, np.sum(prior_programs_mask))
 
-        gene_group_ind = summary_components(all_components, num_onmf_components, summary_method=summary_method)
+        gene_group_ind = summary_components(all_components, num_onmf_components, summary_method=summary_method, figure_folder=self.fig_folder)
 
         # Mask the prior programs and add them to the gene group indices
         sub_mask_ind = np.where(prior_programs_mask)[0]

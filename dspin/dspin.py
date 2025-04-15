@@ -208,13 +208,14 @@ class AbstractDSPIN(ABC):
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path, 
-                  'rec_gap': 10}
+                  'rec_gap': 10, 
+                  'seed': 0}
         params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
                        'lambda_l2_h': 0.005})
-        params.update({'backtrack_gap': 20,
-                       'backtrack_tol': 4})
+        params.update({'backtrack_gap': 40,
+                       'backtrack_tol': 5})
 
         if method == 'maximum_likelihood':
             params['stepsz'] = 0.2
@@ -518,7 +519,7 @@ class ProgramDSPIN(AbstractDSPIN):
 
         all_components = rec_components.reshape(-1, np.sum(prior_programs_mask))
 
-        gene_group_ind = summary_components(all_components, num_onmf_components, summary_method=summary_method)
+        gene_group_ind = summary_components(all_components, num_onmf_components, summary_method=summary_method, figure_folder=self.fig_folder)
 
         # Mask the prior programs and add them to the gene group indices
         sub_mask_ind = np.where(prior_programs_mask)[0]

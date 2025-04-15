@@ -76,7 +76,8 @@ import networkx as nx
 
 def summary_components(all_components: np.array,
                        num_spin: int,
-                       summary_method: str = 'kmeans') -> List[np.array]:
+                       summary_method: str = 'kmeans',
+                       figure_folder: str=None) -> List[np.array]:
     """
     Summarize components using a clustering algorithm.
 
@@ -88,6 +89,8 @@ def summary_components(all_components: np.array,
         The number of clusters.
     summary_method : str, optional
         The method used for summarizing the components. Options are 'kmeans' or 'leiden'. Default is 'kmeans'.
+    figure_folder : str, optional
+        Folder in which to save the figure.
 
     Returns
     -------
@@ -99,7 +102,12 @@ def summary_components(all_components: np.array,
     if summary_method == 'kmeans':
         # Fit KMeans clustering to the components and to their transposed version.
         kmeans = KMeans(n_clusters=num_spin, random_state=0, n_init=50).fit(all_components)
-        kmeans_gene = KMeans(n_clusters=2 * num_spin, random_state=0, n_init=10).fit(all_components.T)
+
+        # take the genes with larger weights for display only
+        gene_weight = np.sum(all_components ** 2, axis=0) ** 0.5
+        gene_sele_filt = gene_weight > np.mean(gene_weight)
+        all_components_sub = all_components[:, gene_sele_filt]
+        kmeans_gene = KMeans(n_clusters=2 * num_spin, random_state=0, n_init=10).fit(all_components_sub.T)
 
         # Initialize an array to store the average component for each cluster.
         components_kmeans = np.zeros((num_spin, num_gene))
@@ -115,6 +123,24 @@ def summary_components(all_components: np.array,
         for ii in range(num_spin):
             # Determine gene cluster assignments based on the maximum component values.
             gene_groups_ind.append(np.argmax(components_kmeans, axis=0) == ii)
+
+        
+
+        sc.set_figure_params(figsize=(8, 4))
+
+        plt.subplot(1, 2, 1)
+        gene_order = np.argsort(kmeans_gene.labels_)
+        comp_order = np.argsort(kmeans.labels_)
+        plt.imshow(all_components_sub[comp_order, :][:, gene_order], aspect='auto', cmap='Blues', vmax=np.max(all_components) / 10, interpolation='none')
+        plt.title('All components')
+
+        plt.subplot(1, 2, 2)
+        plt.imshow(components_kmeans[:, gene_sele_filt][:, gene_order], aspect='auto', cmap='Blues', vmax=np.max(components_kmeans) / 10, interpolation='none')
+        plt.title('Kmeans components')
+
+        if figure_folder is not None:
+            plt.savefig(figure_folder + 'onmf_decomposition_summary.png', dpi=300, bbox_inches='tight')
+            plt.close()
     
     elif summary_method == 'leiden':
 
@@ -144,8 +170,25 @@ def summary_components(all_components: np.array,
         diff = optimiser.optimise_partition(partition, n_iterations=- 1, is_membership_fixed=list(membership_fixed))
 
         gene_groups_ind = []
+        cluster_label_full = np.nan * np.ones(consensus.shape[0])
+
         for ii, part in enumerate(partition):
             gene_groups_ind.append(part)
+            cluster_label_full[part] = ii
+
+        gene_order = np.argsort(cluster_label_full)
+        gene_list_size = np.array([np.sum(cluster_label_full == ii) for ii in range(num_spin)])
+
+        plt.figure(figsize=[8, 8])
+        plt.imshow(consensus[gene_order][:, gene_order], cmap='Blues', vmin=0, vmax=np.percentile(consensus.flatten(), 98))
+        for ii in range(1, num_spin):
+            plt.axvline(np.sum(gene_list_size[:ii]) - 0.5, color='k')
+            plt.axhline(np.sum(gene_list_size[:ii]) - 0.5, color='k')
+        plt.grid()
+
+        if figure_folder is not None:
+            plt.savefig(figure_folder + 'onmf_decomposition_summary.png', dpi=300, bbox_inches='tight')
+            plt.close()
 
     return gene_groups_ind
 
@@ -194,7 +237,9 @@ def onmf(X: np.array, rank: int, max_iter: int = 500) -> Tuple[np.array, np.arra
         # progress bar
         if itr % 10 == 0:
             error = np.linalg.norm(X - np.dot(A, S), 'fro')
-            pbar.set_postfix({"Reconstruction Error": f"{error:.2f}"})
+            self_product = S.dot(S.T)
+            orthogonal_error = np.linalg.norm(self_product - np.diag(np.diag(self_product)), 'fro') / np.linalg.norm(S, 'fro')
+            pbar.set_postfix({"Reconstruction error": f"{error:.2f}", "Orthogonal error": f"{orthogonal_error:.4f}"})
 
     pbar.close()
 
