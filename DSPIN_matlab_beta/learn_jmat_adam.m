@@ -54,8 +54,15 @@ plot_counter = 1;
 
 rec_jmat_log = zeros(num_spin, num_spin, num_rec); 
 
+l1_base_start = 0.02; 
+l1_base_end = 1e-3; 
+l1_base_array = logspace(log10(l1_base_start), log10(l1_base_end), num_epoch / 2);
+l1_base_array = [l1_base_start * ones(1, num_epoch / 4 + 1), l1_base_array, l1_base_end * ones(1, num_epoch / 4 + 1)];
+
 while counter <= num_epoch
     fprintf('%d ', counter);
+
+    l1_base = l1_base_array(counter); 
 
     parfor kk = 1: num_round
 
@@ -79,7 +86,7 @@ while counter <= num_epoch
     rec_jgrad = sum(rec_jgrad .* reshape(samp_weight, 1, 1, []), 3); 
     
     if isfield(train_dat, 'lam_l1j')
-        rec_jgrad = rec_jgrad + train_dat.lam_l1j * min(max(cur_j / 0.02, -1), 1);
+        rec_jgrad = rec_jgrad + train_dat.lam_l1j * min(max(cur_j / l1_base, -1), 1);
     end
     
     if isfield(train_dat, 'lam_l2j')
@@ -92,7 +99,7 @@ while counter <= num_epoch
 
     if isfield(train_dat, 'lam_l1j_prior')
         prior_mask = (train_dat.prior_network == 0); 
-        rec_jgrad = rec_jgrad + train_dat.lam_l1j_prior * min(max((cur_j .* prior_mask) / 0.02, -1), 1);
+        rec_jgrad = rec_jgrad + train_dat.lam_l1j_prior * min(max((cur_j .* prior_mask) / l1_base, -1), 1);
     end
 
     
@@ -105,7 +112,7 @@ while counter <= num_epoch
     end
     
     if isfield(train_dat, 'lam_l1h_perturb')
-        rec_hgrad = rec_hgrad + train_dat.lam_l1h_perturb .* min(max(relative_h / 1e-4, -1), 1);
+        rec_hgrad = rec_hgrad + train_dat.lam_l1h_perturb .* min(max(relative_h / l1_base, -1), 1);
     end
    
     [vars, mm, vv] = adam_optimizer({cur_j, cur_h},...
@@ -157,10 +164,10 @@ while counter <= num_epoch
         colormap(flipud(redblue))
         % thres = prctile(abs(cur_j(:)), 100 - 600 / num_spin ^ 2);
         j_copy = cur_j; j_copy(1: num_spin + 1: end) = 0; 
-        thres = max(abs(j_copy(:)));
+        thres = prctile(abs(j_copy(:)), 100 * (1 - 2 / num_spin));
         caxis([- thres, thres])
-        
         colorbar()
+
         drawnow()
         saveas(gcf, [save_path, '/log.fig'])
 
