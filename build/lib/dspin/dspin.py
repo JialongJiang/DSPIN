@@ -208,13 +208,14 @@ class AbstractDSPIN(ABC):
                   'cur_j': np.zeros((num_spin, num_spin)),
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path, 
-                  'rec_gap': 10}
+                  'rec_gap': 10, 
+                  'seed': 0}
         params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
                        'lambda_l2_h': 0.005})
-        params.update({'backtrack_gap': 20,
-                       'backtrack_tol': 4})
+        params.update({'backtrack_gap': 40,
+                       'backtrack_tol': 5})
 
         if method == 'maximum_likelihood':
             params['stepsz'] = 0.2
@@ -350,6 +351,7 @@ class GeneDSPIN(AbstractDSPIN):
                  adata: ad.AnnData,
                  save_path: str,
                  num_spin: int,
+                 use_default_discretize: bool = True,
                  clip_percentile: float = 95):
         """
         Initialize the GeneDSPIN object.
@@ -362,6 +364,8 @@ class GeneDSPIN(AbstractDSPIN):
             Directory path where results will be saved.
         num_spin : int
             Number of spins used in inference.
+        use_default_discretize : bool, optional
+            Whether to use default discretization. Default is True. Otherwise the discretized data should be explicited setted in program_representation.
         clip_percentile : float, optional
             Percentile threshold for clipping values before discretization. Default is 95.
         """
@@ -374,7 +378,8 @@ class GeneDSPIN(AbstractDSPIN):
         else:
             self._onmf_rep_ori = adata.X
 
-        self.discretize(clip_percentile)
+        if use_default_discretize:
+            self.discretize(clip_percentile)
 
     def program_regulator_discovery(self, 
                                     program_representation_raw: np.ndarray, 

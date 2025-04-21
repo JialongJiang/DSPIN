@@ -351,6 +351,7 @@ class GeneDSPIN(AbstractDSPIN):
                  adata: ad.AnnData,
                  save_path: str,
                  num_spin: int,
+                 use_default_discretize: bool = True,
                  clip_percentile: float = 95):
         """
         Initialize the GeneDSPIN object.
@@ -363,6 +364,8 @@ class GeneDSPIN(AbstractDSPIN):
             Directory path where results will be saved.
         num_spin : int
             Number of spins used in inference.
+        use_default_discretize : bool, optional
+            Whether to use default discretization. Default is True. Otherwise the discretized data should be explicited setted in program_representation.
         clip_percentile : float, optional
             Percentile threshold for clipping values before discretization. Default is 95.
         """
@@ -375,7 +378,8 @@ class GeneDSPIN(AbstractDSPIN):
         else:
             self._onmf_rep_ori = adata.X
 
-        self.discretize(clip_percentile)
+        if use_default_discretize:
+            self.discretize(clip_percentile)
 
     def program_regulator_discovery(self, 
                                     program_representation_raw: np.ndarray, 

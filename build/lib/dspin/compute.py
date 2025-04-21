@@ -972,6 +972,8 @@ def learn_network_adam(raw_data: Any,
         The trained h matrix.
         The training log.
     """
+    np.random.seed(train_dat['seed'])
+
     # Retrieve training parameters and data
     num_spin, num_round = train_dat['cur_h'].shape
     num_epoch, stepsz, rec_gap = (
@@ -981,10 +983,7 @@ def learn_network_adam(raw_data: Any,
     list_step = np.arange(num_epoch, 0, - rec_gap)[::-1]
     cur_j, cur_h = (train_dat.get(key, None) for key in ["cur_j", "cur_h"])
     save_path = train_dat.get('save_path', None)
-    backtrack_gap, backtrack_tol = (
-        train_dat.get(
-            key, None) for key in [
-            "backtrack_gap", "backtrack_tol"])
+    backtrack_gap, backtrack_tol = (train_dat.get(key, None) for key in ["backtrack_gap", "backtrack_tol"])
 
     # Initialize variables to store parameters, gradients, and other values
     # during training
@@ -1038,7 +1037,7 @@ def learn_network_adam(raw_data: Any,
             # print('Progress: %d, Network gradient: %f' % (
             #     np.round(100 * counter / num_epoch, 2), rec_jgrad_sum_norm[counter - 1]))
             pbar.update(rec_gap)
-            pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.4f}"})
+            pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.6f}"})
 
         # Handle backtracking
         
