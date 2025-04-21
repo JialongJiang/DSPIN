@@ -1,14 +1,14 @@
 function relative_h = compute_relative_response(cur_h, if_control, batch_index)
 
-    if all(if_control == 0)
-    error('if_control contains all zeros');
-    end
-
     unique_batches = unique(batch_index);
     num_batches = length(unique_batches);
 
     relative_h = zeros(size(cur_h));
-    all_controls_mean = mean(cur_h(:, if_control), 2);
+    if all(if_control == 0)
+        all_controls_mean = mean(cur_h, 2); 
+    else
+        all_controls_mean = mean(cur_h(:, if_control), 2);
+    end
     
     for ii = 1: num_batches
         % Get the current batch index
@@ -17,10 +17,9 @@ function relative_h = compute_relative_response(cur_h, if_control, batch_index)
         % Get the indices of samples in the current batch
         batch_samples_idx = find(batch_index == current_batch);
         
-        % Get the control indices in the current batch
-        batch_controls_idx = batch_samples_idx(if_control(batch_samples_idx));
-        
-        if ~isempty(batch_controls_idx)
+        if any(if_control(batch_samples_idx))
+            % Get the control indices in the current batch
+            batch_controls_idx = batch_samples_idx(if_control(batch_samples_idx));
             % Compute the mean of controls in the current batch
             batch_controls_mean = mean(cur_h(:, batch_controls_idx), 2);
         else

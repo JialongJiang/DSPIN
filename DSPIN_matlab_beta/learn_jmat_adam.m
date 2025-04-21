@@ -6,7 +6,7 @@ method = train_dat.method;
 directed = train_dat.directed; 
 
 state_size = zeros(num_round, 1); 
-if strcmp(method, 'pseudo_likelihood')
+if strcmp(method, 'pseudo_likelihood') | strcmp(method, 'mean_field')
     num_spin = size(raw_data{1}, 1);
     for ii = 1: num_round
         state_size(ii) = size(raw_data{ii}, 2);
@@ -64,13 +64,15 @@ while counter <= num_epoch
 
     l1_base = l1_base_array(counter); 
 
-    parfor kk = 1: num_round
+    for kk = 1: num_round
 
         corr_grad = zeros(num_spin);
         mean_grad = zeros(num_spin, num_round); 
         
         if strcmp(method, 'pseudo_likelihood')
             [corr_grad, mean_grad] = pseudo_grad(cur_j, cur_h(:, kk), raw_data{kk}, directed);
+        elseif strcmp(method, 'mean_field')
+            [corr_grad, mean_grad] = mean_field_grad(cur_j, cur_h(:, kk), raw_data{kk}, directed);
         elseif strcmp(method, 'maximum_likelihood')
             [corr_grad, mean_grad] = mle_grad(cur_j, cur_h(:, kk), raw_data{kk});
         elseif strcmp(method, 'mcmc_maximum_likelihood')
@@ -114,12 +116,17 @@ while counter <= num_epoch
     if isfield(train_dat, 'lam_l1h_perturb')
         rec_hgrad = rec_hgrad + train_dat.lam_l1h_perturb .* min(max(relative_h / l1_base, -1), 1);
     end
-   
+    
+    % rec_jgrad = rec_jgrad - diag(diag(rec_jgrad)); 
+    
+    % rec_hgrad = rec_hgrad .* eye(num_spin); 
+
     [vars, mm, vv] = adam_optimizer({cur_j, cur_h},...
         {rec_jgrad, rec_hgrad}, mm, vv, counter, stepsz);
     
+
     cur_j = vars{1}; 
-    cur_h = vars{2}; 
+    % cur_h = vars{2}; 
        
     
     rec_hvec_all(:, :, counter) = cur_h; 
@@ -158,7 +165,7 @@ while counter <= num_epoch
         set(gca, 'YScale', 'log')
         end
         
-        num_plot = min(50, num_spin); 
+        num_plot = min(100, num_spin); 
         subplot(2, 2, 4)
         imagesc(cur_j(1: num_plot, 1: num_plot))
         colormap(flipud(redblue))
@@ -169,10 +176,10 @@ while counter <= num_epoch
         colorbar()
 
         drawnow()
-        saveas(gcf, [save_path, '/log.fig'])
+        saveas(gcf, [save_path, 'log.fig'])
 
         rec_jmat_log(:, :, plot_counter) = cur_j; 
-        save([save_path, '/network_mlog.mat'], 'cur_j', 'cur_h', 'rec_jgrad_sum_norm', 'rec_jmat_log')
+        save([save_path, 'network_mlog.mat'], 'cur_j', 'cur_h', 'rec_jgrad_sum_norm', 'rec_jmat_log')
         plot_counter = plot_counter + 1;
     end
 

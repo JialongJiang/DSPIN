@@ -82,9 +82,9 @@ def automatic_david_annotation(data_folder, file_name, token_name, species='huma
 
     # Save results to Excel
     save_to_excel(data_folder, file_name,
-                  gene_id_map_reverse, num_list, full=False)
+                    gene_id_map_reverse, all_onmf_df.columns.tolist(), full=False)
     save_to_excel(data_folder, file_name,
-                  gene_id_map_reverse, num_list, full=True)
+                    gene_id_map_reverse, all_onmf_df.columns.tolist(), full=True)
 
 
 def make_user_prompt_with_score(genes, feature_df=[], direct=False, customized_prompt=None):
@@ -285,10 +285,10 @@ def setup_david_client(token_name):
 
     from suds.client import Client
 
-    url = 'https://david.ncifcrf.gov/webservice/services/DAVIDWebService?wsdl'
+    url = 'https://davidbioinformatics.nih.gov/webservice/services/DAVIDWebService?wsdl'
     client = Client(url)
     client.wsdl.services[0].setlocation(
-        'https://david.ncifcrf.gov/webservice/services/DAVIDWebService.DAVIDWebServiceHttpSoap11Endpoint/')
+        'https://davidbioinformatics.nih.gov/webservice/services/DAVIDWebService.DAVIDWebServiceHttpSoap11Endpoint/')
     client.service.authenticate(token_name)
     return client
 
@@ -359,7 +359,7 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
     for i in range(num_lists):
         cur_gene_list = all_onmf_df.iloc[:, i].dropna()
         cur_gene_list = map_gene_ids(gene_id_map, cur_gene_list)
-        save_path = os.path.join(save_folder, f'list_{i}.csv')
+        save_path = os.path.join(save_folder, f'list_{all_onmf_df.columns[i]}.csv')
 
         input_ids = ','.join(cur_gene_list)
         id_type = 'ENSEMBL_GENE_ID'
@@ -370,7 +370,7 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         term_clustering_report = client.service.getTermClusterReport(
             overlap, initialSeed, finalSeed, linkage, kappa)
 
-        print(f'Gene list {i} ', end='\t')
+        print(f'Gene list {all_onmf_df.columns[i]} ', end='\t')
         # print(term_clustering_report)
         if term_clustering_report is None:
             raise Exception(
@@ -379,7 +379,7 @@ def process_gene_lists(data_folder, file_name, all_onmf_df, gene_id_map, client)
         parse_david_output(term_clustering_report, save_path)
 
 
-def save_to_excel(data_folder, file_name, gene_id_map_reverse, num_lists, full=True):
+def save_to_excel(data_folder, file_name, gene_id_map_reverse, list_name, full=True):
     """
     Save the parsed DAVID output to an Excel file, with an option to include full or filtered results.
 
@@ -387,7 +387,7 @@ def save_to_excel(data_folder, file_name, gene_id_map_reverse, num_lists, full=T
         data_folder (str): The folder where the data files are located.
         file_name (str): The name of the original CSV file containing gene data.
         gene_id_map_reverse (dict): A dictionary mapping ENSEMBL IDs to gene symbols.
-        num_lists (int): The number of gene lists processed.
+        list_name (list): A list of gene list names.
         full (bool): Whether to save the full results. If False, only results with Pvalue <= 0.05 are saved.
     """
 
@@ -433,8 +433,8 @@ def save_to_excel(data_folder, file_name, gene_id_map_reverse, num_lists, full=T
         '.csv', '_david_full.xlsx') if full else file_name.replace('.csv', '_david.xlsx')
 
     with pd.ExcelWriter(data_folder + xlsx_name) as writer:
-        for ii in range(num_lists):
-            cur_pd = pd.read_csv(save_folder + 'list_%d.csv' % ii, sep='\t', names=[
+        for lname in list_name:
+            cur_pd = pd.read_csv(save_folder + f'list_{lname}.csv', sep='\t', names=[
                                  'Category', 'Term', 'Count', '%', 'Pvalue', 'Genes', 'List Total', 'Pop Hits', 'Pop Total', 'Fold Enrichment', 'Bonferroni', 'Benjamini', 'FDR'])
             filt1 = cur_pd['Category'] == 'UP_SEQ_FEATURE'
             filt2 = cur_pd['Pvalue'].apply(filt_fun)
@@ -453,9 +453,10 @@ def save_to_excel(data_folder, file_name, gene_id_map_reverse, num_lists, full=T
                     cur_pd = pd.DataFrame(np.insert(
                         cur_pd.values, ind + kk, values=[" "] * len(cur_pd.columns), axis=0), columns=cur_pd.columns)
 
-            cur_pd.to_excel(writer, sheet_name='program_%d' % ii, index=False)
-            writer.sheets['program_%d' % ii].set_column(0, 0, 25)
-            writer.sheets['program_%d' % ii].set_column(1, 1, 50)
-            writer.sheets['program_%d' % ii].set_column(2, 2, 5)
-            writer.sheets['program_%d' % ii].set_column(3, 3, 5)
-            writer.sheets['program_%d' % ii].set_column(5, 5, 100)
+            sheet_name = lname
+            cur_pd.to_excel(writer, sheet_name=sheet_name, index=False)
+            writer.sheets[sheet_name].set_column(0, 0, 25)
+            writer.sheets[sheet_name].set_column(1, 1, 50)
+            writer.sheets[sheet_name].set_column(2, 2, 5)
+            writer.sheets[sheet_name].set_column(3, 3, 5)
+            writer.sheets[sheet_name].set_column(5, 5, 100)
