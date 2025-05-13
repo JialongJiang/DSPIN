@@ -474,8 +474,6 @@ class ProgramDSPIN(AbstractDSPIN):
         self._gene_matrix_large = None
         self._use_data_list = None
         self.gene_program_csv = None
-        self.prior_programs = None
-        self.preprogram_num = len(prior_programs) if prior_programs else 0
 
     @property
     def onmf_decomposition(self):

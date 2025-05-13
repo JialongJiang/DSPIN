@@ -550,32 +550,27 @@ class ProgramDSPIN(AbstractDSPIN):
                                cluster_key: str = 'leiden',
                                mode: str = 'compute_summary',
                                prior_programs: List[List[str]] = None,
+                               clip_percentile: float = 100,
                                params: dict = {}) -> None:
         """
         Discover gene programs by performing oNMF decomposition on the annotated data.
 
         Parameters
         ----------
-        num_onmf_components : int, optional
-            Number of oNMF components. Default is None.
-        num_subsample : int, optional
-            Number of samples to use after subsampling. Default is 10000.
-        num_subsample_large : int, optional
-            Number of samples for large subsampling. Default is None.
         num_repeat : int, optional
             Number of times to repeat oNMF. Default is 10.
         seed : int, optional
             Random seed for reproducibility. Default is 0.
-        balance_obs : str, optional
-            Observation category to balance. Default is None.
-        balance_method : str, optional
-            Method used for balancing categories. Default is None.
-        max_sample_rate : float, optional
-            Maximum sampling rate. Default is 2.
+        cluster_key : str, optional
+            Key in `adata.obs` for clustering labels. Default is 'leiden'.
+        mode: str, optional
+            Mode of operation. Options: 'compute_summary', 'compute_only', 'summary_only'. Default is 'compute_summary'.
         prior_programs : List[List[str]], optional
             List of predefined gene programs. Default is None.
-        summary_method : str, optional
-            Method to summarize oNMF components. Default is 'kmeans'.
+        clip_percentile : float, optional
+            Percentile for clipping values before discretization. Default is 100.
+        params : dict, optional
+            Additional parameters for oNMF. Default is an empty dictionary.
         """
 
         if mode not in ['compute_summary', 'compute_only', 'summary_only']:
@@ -666,7 +661,7 @@ class ProgramDSPIN(AbstractDSPIN):
             self._onmf_rep_ori = onmf_summary.transform(
                 gene_matrix / self.matrix_std)
 
-            self.discretize()
+            self.discretize(clip_percentile)
 
 
 class DSPIN(object):

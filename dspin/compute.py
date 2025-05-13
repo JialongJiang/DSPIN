@@ -313,7 +313,8 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
             21, num_spin))
 
     onmf_rep_tri = np.zeros(onmf_rep_ori.shape)
-    for ii in range(num_spin):
+    print('Processing gene or program expression levels...')
+    for ii in tqdm(range(num_spin)):
         # Perform KMeans clustering for each spin/component
         km_fit = KMeans(n_clusters=3, n_init=10).fit(
             onmf_rep_ori[:, ii].reshape(-1, 1))
