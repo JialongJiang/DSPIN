@@ -290,7 +290,9 @@ def compute_onmf(seed: int,
     return nmf_model
 
 
-def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
+def onmf_discretize(onmf_rep_ori: np.array, 
+                    num_init: int = 10,
+                    fig_folder: str = None) -> np.array:
     """
     Discretize the ONMF representation using KMeans clustering and visualize the sorted representations.
 
@@ -316,8 +318,8 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
     print('Processing gene or program expression levels...')
     for ii in tqdm(range(num_spin)):
         # Perform KMeans clustering for each spin/component
-        km_fit = KMeans(n_clusters=3, n_init=10).fit(
-            onmf_rep_ori[:, ii].reshape(-1, 1))
+        km_fit = KMeans(n_clusters=3, n_init=num_init).fit(onmf_rep_ori[:, ii].reshape(-1, 1))
+
         onmf_rep_tri[:, ii] = (km_fit.labels_ == np.argsort(km_fit.cluster_centers_.reshape(-1))[0]) * \
             (-1) + (km_fit.labels_ == np.argsort(km_fit.cluster_centers_.reshape(-1))[2]) * 1
 
@@ -325,8 +327,7 @@ def onmf_discretize(onmf_rep_ori: np.array, fig_folder: str = None) -> np.array:
         if ii < 21:
             ax = plt.subplot(grid[ii])
             plt.plot(np.sort(onmf_rep_ori[:, ii]))
-            plt.plot(np.sort(km_fit.cluster_centers_[
-                     km_fit.labels_].reshape(-1)))
+            plt.plot(np.sort(km_fit.cluster_centers_[km_fit.labels_].reshape(-1)))
 
     # Save the visual representation
     if fig_folder is not None:
@@ -565,50 +566,7 @@ def para_moments(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
     return corr_para, mean_para
 
 
-@numba.njit
-def np_apply_along_axis(func1d: Callable[[np.ndarray], float], 
-                        axis: int, 
-                        arr: np.ndarray) -> np.ndarray:
-    """
-    Applies a function along the specified axis.
-
-    Parameters
-    ----------
-    func1d : Callable[[np.ndarray], float]
-        A 1-D function to be applied.
-    axis : int
-        Axis along which the function should be applied.
-    arr : np.ndarray
-        Input array.
-
-    Returns
-    -------
-    np.ndarray
-        The result of applying func1d to arr along the specified axis.
-    """
-    assert arr.ndim == 2
-    assert axis in [0, 1]
-    result = np.empty(arr.shape[1]) if axis == 0 else np.empty(arr.shape[0])
-
-    for i in range(len(result)):
-        result[i] = func1d(arr[:, i]) if axis == 0 else func1d(arr[i, :])
-
-    return result
-
-
-@numba.njit
-def np_mean(array: np.array, axis: int) -> np.array:
-    """
-    Computes the arithmetic mean along the specified axis.
-
-    Parameters:
-    array (np.array): Input array.
-    axis (int): Axis along which the mean is computed. 1 is for row-wise, 0 is for column-wise.
-    """
-    return np_apply_along_axis(np.mean, axis, array)
-
-
-@numba.jit()
+@numba.njit(fastmath=True)
 def pseudol_gradient(cur_j: np.ndarray, 
                      cur_h: np.ndarray, 
                      cur_state: np.ndarray, 
@@ -633,37 +591,43 @@ def pseudol_gradient(cur_j: np.ndarray,
         The gradient of j.
         The gradient of h.
     """
-    num_spin = cur_j.shape[0]
+    num_spin, num_sample = cur_state.shape
+    sample_factor = 1.0 / num_sample     
 
-    cur_j_grad = np.zeros((num_spin, num_spin))
-    cur_h_grad = np.zeros((num_spin, 1))
+    diag_j = np.empty(num_spin, dtype=cur_j.dtype)
+    for ii in range(num_spin):
+        diag_j[ii] = cur_j[ii, ii]
 
-    # Filtering diagonal elements of cur_j matrix.
-    j_filt = cur_j.copy()
-    np.fill_diagonal(j_filt, 0)
-    effective_h = j_filt.dot(cur_state) + cur_h
+    j_no_diag = cur_j.copy()
+    for ii in range(num_spin):
+        j_no_diag[ii, ii] = 0.0
+
+    eff_h = j_no_diag @ cur_state + cur_h.reshape(num_spin, 1)  
+
+    exp_plus = np.empty_like(eff_h)
+    exp_minus = np.empty_like(eff_h)
+    denom = np.empty_like(eff_h)
 
     for ii in range(num_spin):
-        # Calculating gradients for each spin.
-        j_sub = cur_j[ii, ii]
-        h_sub = effective_h[ii, :]
+        exp_plus[ii, :] = np.exp(diag_j[ii] + eff_h[ii, :])
+        exp_minus[ii, :] = np.exp(diag_j[ii] - eff_h[ii, :])
+        denom[ii, :] = exp_plus[ii, :] + exp_minus[ii, :] + 1.0
 
-        term1 = np.exp(j_sub + h_sub)
-        term2 = np.exp(j_sub - h_sub)
+    # Diagonal (self‑coupling) gradients 
+    term_diag = cur_state * cur_state - (exp_plus + exp_minus) / denom
 
-        # Compute gradients.
-        j_sub_grad = cur_state[ii, :] ** 2 - \
-            (term1 + term2) / (term1 + term2 + 1)
-        h_eff_grad = cur_state[ii, :] - (term1 - term2) / (term1 + term2 + 1)
+    # Off‑diagonal and field gradients 
+    h_eff_grad = cur_state - (exp_plus - exp_minus) / denom
+    cur_j_grad = (h_eff_grad @ cur_state.T) * sample_factor
+    for ii in range(num_spin):
+        cur_j_grad[ii, ii] = np.sum(term_diag[ii, :]) * sample_factor
 
-        j_off_sub_grad = h_eff_grad * cur_state
+    cur_h_grad = np.zeros((num_spin, 1), dtype=cur_j.dtype)
+    for ii in range(num_spin):
+        cur_h_grad[ii, 0] = np.sum(h_eff_grad[ii, :]) * sample_factor
 
-        cur_j_grad[ii, :] = np_mean(j_off_sub_grad, axis=1)
-        cur_j_grad[ii, ii] = np.mean(j_sub_grad)
-        cur_h_grad[ii] = np.mean(h_eff_grad)
-
-        if not directed:
-            cur_j_grad = (cur_j_grad + cur_j_grad.T) / 2
+    if not directed:
+        cur_j_grad = 0.5 * (cur_j_grad + cur_j_grad.T)
 
     return - cur_j_grad, - cur_h_grad
 
@@ -1030,13 +994,13 @@ def learn_network_adam(raw_data: Any,
 
         # Save training log and print progress
         if counter in list_step:
-            sio.savemat(save_path + 'train_log.mat',
-                        {'list_step': list_step,
-                         'rec_hvec_all': rec_hvec_all,
-                         'rec_jmat_all': rec_jmat_all,
-                         'rec_jgrad_sum_norm': rec_jgrad_sum_norm})
-            # print('Progress: %d, Network gradient: %f' % (
-            #     np.round(100 * counter / num_epoch, 2), rec_jgrad_sum_norm[counter - 1]))
+            if train_dat['save_log']:
+                sio.savemat(save_path + 'train_log.mat',
+                            {'list_step': list_step,
+                            'rec_hvec_all': rec_hvec_all,
+                            'rec_jmat_all': rec_jmat_all,
+                            'rec_jgrad_sum_norm': rec_jgrad_sum_norm})
+
             pbar.update(rec_gap)
             pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.6f}"})
 
