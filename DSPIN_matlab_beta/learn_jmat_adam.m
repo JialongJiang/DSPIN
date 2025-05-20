@@ -171,15 +171,21 @@ while counter <= num_epoch
         colormap(flipud(redblue))
         % thres = prctile(abs(cur_j(:)), 100 - 600 / num_spin ^ 2);
         j_copy = cur_j; j_copy(1: num_spin + 1: end) = 0; 
-        thres = prctile(abs(j_copy(:)), 100 * (1 - 2 / num_spin));
+        thres = max(prctile(abs(j_copy(:)), 100 * (1 - 2 / num_spin)), 1e-4);
         caxis([- thres, thres])
         colorbar()
 
         drawnow()
-        saveas(gcf, [save_path, 'log.fig'])
+        if train_dat.save_figure
+            saveas(gcf, [save_path, 'log.fig'])
+        end
 
         rec_jmat_log(:, :, plot_counter) = cur_j; 
-        save([save_path, 'network_mlog.mat'], 'cur_j', 'cur_h', 'rec_jgrad_sum_norm', 'rec_jmat_log')
+        
+        if train_dat.save_log
+            save([save_path, 'network_mlog.mat'], 'cur_j', 'cur_h', 'rec_jgrad_sum_norm', 'rec_jmat_log')
+        end
+        
         plot_counter = plot_counter + 1;
     end
 
@@ -192,6 +198,7 @@ if (counter > step_gap) && (rec_jgrad_sum_norm(counter) > 2 * rec_jgrad_sum_norm
 
     counter = counter - step_gap;
     stepsz = stepsz / 2;
+    plot_counter = min(plot_counter, length(list_step)); 
 
     disp(['backtrack ', num2str(stepsz)])
     cur_backtrap = cur_backtrap + 1;
