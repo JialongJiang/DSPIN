@@ -130,7 +130,9 @@ class AbstractDSPIN(ABC):
     def sample_list(self, value):
         self._samp_list = value
 
-    def discretize(self, clip_percentile: float = 100) -> None:
+    def discretize(self, 
+                   clip_percentile: float = 100,
+                   num_init: int = 10) -> None:
         """
         Discretizes the oNMF representation into three states (-1, 0, 1) using K-means clustering.
 
@@ -138,6 +140,8 @@ class AbstractDSPIN(ABC):
         ----------
         clip_percentile : float, optional
             Percentile at which to clip values before discretization (default is 100).
+        num_init : int, optional
+            Number of initializations for K-means clustering (default is 10).
         """
         onmf_rep_ori = self.program_representation_raw.copy()
         fig_folder = self.fig_folder
@@ -147,7 +151,7 @@ class AbstractDSPIN(ABC):
                 onmf_rep_ori[:, ii] = onmf_rep_ori[:, ii] / np.percentile(onmf_rep_ori[:, ii], clip_percentile)
             onmf_rep_ori = onmf_rep_ori.clip(0, 1)
 
-        onmf_rep_tri = onmf_discretize(onmf_rep_ori, fig_folder)
+        onmf_rep_tri = onmf_discretize(onmf_rep_ori, num_init, fig_folder)
         self._onmf_rep_tri = onmf_rep_tri
 
     def raw_data_corr(self, sample_id_key: str) -> None:
@@ -209,7 +213,8 @@ class AbstractDSPIN(ABC):
                   'cur_h': np.zeros((num_spin, num_sample)),
                   'save_path': self.save_path, 
                   'rec_gap': 10, 
-                  'seed': 0}
+                  'seed': 0,
+                  'save_log': False}
         params.update({'lambda_l1_j': 0.01,
                        'lambda_l1_h': 0,
                        'lambda_l2_j': 0,
@@ -351,8 +356,7 @@ class GeneDSPIN(AbstractDSPIN):
                  adata: ad.AnnData,
                  save_path: str,
                  num_spin: int,
-                 use_default_discretize: bool = True,
-                 clip_percentile: float = 95):
+                 discretize_params: dict = {}):
         """
         Initialize the GeneDSPIN object.
 
@@ -378,8 +382,14 @@ class GeneDSPIN(AbstractDSPIN):
         else:
             self._onmf_rep_ori = adata.X
 
-        if use_default_discretize:
-            self.discretize(clip_percentile)
+        dparams = {'use_default_discretize': True,
+                   'clip_percentile': 95,
+                   'num_init': 10}
+        dparams.update(discretize_params)
+        
+        if dparams['use_default_discretize']:
+            self.discretize(clip_percentile=dparams['clip_percentile'], 
+                            num_init=dparams['num_init'])
 
     def program_regulator_discovery(self, 
                                     program_representation_raw: np.ndarray, 
@@ -444,10 +454,7 @@ class ProgramDSPIN(AbstractDSPIN):
     def __init__(self,
                  adata: ad.AnnData,
                  save_path: str,
-                 num_spin: int,
-                 num_onmf_components: int = None,
-                 prior_programs: List[List[str]] = None,
-                 num_repeat: int = 10):
+                 num_spin: int):
         """
         Initialize the ProgramDSPIN object.
 
@@ -459,12 +466,6 @@ class ProgramDSPIN(AbstractDSPIN):
             Directory path for saving results.
         num_spin : int
             Number of spins used in DSPIN.
-        num_onmf_components : int, optional
-            Number of oNMF components, default is None.
-        prior_programs : List[List[str]], optional
-            List of predefined gene programs.
-        num_repeat : int, optional
-            Number of repetitions for oNMF computation. Default is 10.
         """
         super().__init__(adata, save_path, num_spin)
 
@@ -474,8 +475,6 @@ class ProgramDSPIN(AbstractDSPIN):
         self._gene_matrix_large = None
         self._use_data_list = None
         self.gene_program_csv = None
-        self.prior_programs = None
-        self.preprogram_num = len(prior_programs) if prior_programs else 0
 
     @property
     def onmf_decomposition(self):
@@ -550,32 +549,28 @@ class ProgramDSPIN(AbstractDSPIN):
                                cluster_key: str = 'leiden',
                                mode: str = 'compute_summary',
                                prior_programs: List[List[str]] = None,
-                               params: dict = {}) -> None:
+                               clip_percentile: float = 100,
+                               params: dict = {},
+                               discretize_params: dict = {}) -> None:
         """
         Discover gene programs by performing oNMF decomposition on the annotated data.
 
         Parameters
         ----------
-        num_onmf_components : int, optional
-            Number of oNMF components. Default is None.
-        num_subsample : int, optional
-            Number of samples to use after subsampling. Default is 10000.
-        num_subsample_large : int, optional
-            Number of samples for large subsampling. Default is None.
         num_repeat : int, optional
             Number of times to repeat oNMF. Default is 10.
         seed : int, optional
             Random seed for reproducibility. Default is 0.
-        balance_obs : str, optional
-            Observation category to balance. Default is None.
-        balance_method : str, optional
-            Method used for balancing categories. Default is None.
-        max_sample_rate : float, optional
-            Maximum sampling rate. Default is 2.
+        cluster_key : str, optional
+            Key in `adata.obs` for clustering labels. Default is 'leiden'.
+        mode: str, optional
+            Mode of operation. Options: 'compute_summary', 'compute_only', 'summary_only'. Default is 'compute_summary'.
         prior_programs : List[List[str]], optional
             List of predefined gene programs. Default is None.
-        summary_method : str, optional
-            Method to summarize oNMF components. Default is 'kmeans'.
+        clip_percentile : float, optional
+            Percentile for clipping values before discretization. Default is 100.
+        params : dict, optional
+            Additional parameters for oNMF. Default is an empty dictionary.
         """
 
         if mode not in ['compute_summary', 'compute_only', 'summary_only']:
@@ -666,7 +661,12 @@ class ProgramDSPIN(AbstractDSPIN):
             self._onmf_rep_ori = onmf_summary.transform(
                 gene_matrix / self.matrix_std)
 
-            self.discretize()
+            dparams = {'clip_percentile': 100,
+                       'num_init': 10}
+            dparams.update(discretize_params)
+
+            self.discretize(clip_percentile=dparams['clip_percentile'],
+                            num_init=dparams['num_init'])
 
 
 class DSPIN(object):
