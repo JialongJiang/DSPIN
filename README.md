@@ -2,17 +2,17 @@
 
 Tutorial, code and examples of the D-SPIN framework for the preprint "D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response" ([bioRxiv](https://www.biorxiv.org/content/10.1101/2023.04.19.537364))
 
-![alternativetext](figure/readme/Figure1_20230309_Inna.png)
+![alternativetext](figure/readme/Overview_20250523.png)
 
 ## Installation
 
-D-SPIN is implemented in Python and Matlab. The Python code is sufficient for analysis of small datasets with around 20k cells and tens of conditions. The Matlab code is only used for network inference on large datasets as Matlab can be easily deployed on clusters for parallelization with the build-in "parfor" function. 
+D-SPIN is implemented in Python and MATLAB. The Python code is sufficient for the analysis of most datasets with less than 100k cells and a few hundreds of conditions. The MATLAB code is more efficient on large datasets as MATLAB can be easily deployed on clusters for parallelization with the build-in "parfor" function. 
 
 The python code can be installed with 
 
 `pip install dspin`
 
-The Matlab code can be downloaded from the folder "DSPIN_matlab", and directly executable in Matlab after specifying the path to the data. 
+The MATLAB code can be downloaded from the folder "DSPIN_matlab", and directly executable in MATLAB after specifying the path to the data. 
 
 ## Demos
 
@@ -121,7 +121,7 @@ D-SPIN identifies a set of gene programs that coexpress in the data, and represe
 
 ![alternativetext](figure/thomsonlab_signaling/gene_program_example.png)
 
-D-SPIN uses cross-correlation and mean of each perturbation condition to inferred a unified regulatory network and the response vector of each perturbation condition. The inference can be parallelized across perturbation conditions. The inference code is in Matlab using "parfor", while for demo purpose Python code (without parallelization) is provided.
+D-SPIN uses cross-correlation and mean of each perturbation condition to inferred a unified regulatory network and the response vector of each perturbation condition. The inference can be parallelized across perturbation conditions. The inference code is in MATLAB using "parfor", while for demo purpose Python code (without parallelization) is provided.
 
 The inferred regulatory network and perturbations can be jointly analyzed to reveal how perturbations act in the context of the regulatory network.
 
