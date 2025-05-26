@@ -526,7 +526,7 @@ def sample_states(samp_full: np.array, onmf_rep_tri: np.array) -> Tuple[np.array
     return state_list, samp_list
 
 
-def para_moments(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
+def para_moments_numpy(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
     """
     Calculate the correlation and mean parameters given a j matrix and an h vector.
 
@@ -565,6 +565,73 @@ def para_moments(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.array]:
 
     return corr_para, mean_para
 
+@numba.njit(fastmath=True, cache=True)
+def para_moments(j_mat: np.ndarray,
+                       h_vec: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Calculate the correlation and mean parameters given an interaction
+    matrix and an external field vector, using a Numba‑accelerated kernel.
+
+    Parameters
+    ----------
+    j_mat : np.ndarray
+        Interaction matrix.
+    h_vec : np.ndarray
+        External field vector.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        The correlation parameter array of shape (n, n).
+        The mean parameter array of shape (n,).
+    """
+    num_spin: int = j_mat.shape[0]
+
+    # Copy so we can safely modify the diagonal in‑place
+    j_dbl = j_mat.copy()
+    for ii in range(num_spin):
+        j_dbl[ii, ii] += j_mat[ii, ii]
+
+    num_sample: int = 3 ** num_spin
+
+    partition: float = 0.0
+    mean_para = np.zeros(num_spin, dtype=np.float64)
+    corr_para = np.zeros((num_spin, num_spin), dtype=np.float64)
+
+    spins = np.empty(num_spin, dtype=np.int8)
+
+    for idx in range(num_sample):
+        # Decode `idx` → base‑3 spin configuration in {‑1, 0, 1}
+        tmp = idx
+        for s in range(num_spin - 1, -1, -1):
+            spins[s] = (tmp % 3) - 1
+            tmp //= 3
+
+        # Energy: E = −h·s − ½ sᵀJs
+        energy: float = 0.0
+        for ii in range(num_spin):
+            energy -= h_vec[ii] * spins[ii]
+
+        js_term: float = 0.0
+        for ii in range(num_spin):
+            dot: float = 0.0
+            for jj in range(num_spin):
+                dot += j_dbl[ii, jj] * spins[jj]
+            js_term += spins[ii] * dot
+        energy -= 0.5 * js_term
+
+        weight: float = np.exp(-energy)
+
+        partition += weight
+        for ii in range(num_spin):
+            mean_para[ii] += spins[ii] * weight
+            for jj in range(num_spin):
+                corr_para[ii, jj] += spins[ii] * spins[jj] * weight
+
+    mean_para /= partition
+    corr_para /= partition
+
+    return corr_para, mean_para
 
 @numba.njit(fastmath=True)
 def pseudol_gradient(cur_j: np.ndarray, 
@@ -602,7 +669,7 @@ def pseudol_gradient(cur_j: np.ndarray,
     for ii in range(num_spin):
         j_no_diag[ii, ii] = 0.0
 
-    eff_h = j_no_diag @ cur_state + cur_h.reshape(num_spin, 1)  
+    eff_h = j_no_diag @ cur_state + cur_h 
 
     exp_plus = np.empty_like(eff_h)
     exp_minus = np.empty_like(eff_h)
@@ -763,7 +830,7 @@ def compute_gradient(cur_j: np.ndarray,
         # Computing gradients using the specified method.
         if method == 'pseudo_likelihood':
             j_grad, h_grad = pseudol_gradient(
-                cur_j, cur_h[:, kk].reshape(- 1, 1), raw_data[kk], directed=train_dat['directed'])
+                cur_j, cur_h[:, kk: kk + 1], raw_data[kk], directed=train_dat['directed'])
             h_grad = h_grad.flatten()
         else:
             # Distinguishing between other methods and computing gradients
