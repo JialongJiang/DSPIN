@@ -20,7 +20,7 @@ Two demos of D-SPIN are available on Google Colab.
 
 The first demo reconstructs the regulatory network of simulated hematopoietic stem cell (HSC) differentiation network with perturbations using the BEELINE framework (Pratapa, Aditya, et al. Nature methods, 2020). 
 
-[Demo1](https://colab.research.google.com/drive/1mjJ09_E9kjEYsGCzf10-aZfuOqHUEV5u?usp=sharing)
+[Demo1](https://colab.research.google.com/drive/1Nja8AAcP0L7Ag6DGbyn21SxGafsYX4fA?usp=sharing)
 
 The second demo reconstructs regulatory network and response vector in a single-cell dataset collected in the ThomsonLab.In the dataset, human peripheral blood mononuclear cells (PBMCs) were treated with various signaling molecules with different dosages. 
 

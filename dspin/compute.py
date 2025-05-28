@@ -1103,6 +1103,8 @@ def learn_network_adam(raw_data: Any,
 
     backtrack_counter = 0
     counter = 1
+    
+    tqdm._instances.clear()
     pbar = tqdm(total=num_epoch)
 
     while counter <= num_epoch:
