@@ -20,6 +20,7 @@ from tqdm import tqdm
 from typing import Tuple, List, Callable, Any, Dict
 import warnings
 from scipy.sparse import issparse
+from joblib import Parallel, delayed, parallel_backend
 
 
 def category_balance_number(
@@ -794,10 +795,10 @@ def samp_moments(j_mat: np.ndarray,
     return corr_para, mean_para
 
 
-def compute_gradient(cur_j: np.ndarray, 
-                     cur_h: np.ndarray, 
-                     raw_data: List[Tuple[np.ndarray, np.ndarray]], 
-                     method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+def compute_gradient_serial(cur_j: np.ndarray,
+                            cur_h: np.ndarray,
+                            raw_data: List[Tuple[np.ndarray, np.ndarray]],
+                            method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute the gradient based on the specified method.
 
@@ -839,10 +840,81 @@ def compute_gradient(cur_j: np.ndarray,
                 corr_para, mean_para = para_moments(cur_j, cur_h[:, kk])
             elif method == 'mcmc_maximum_likelihood':
                 corr_para, mean_para = samp_moments(
-                    cur_j, cur_h, train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
+                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
             j_grad = corr_para - raw_data[kk][0]
             h_grad = mean_para - raw_data[kk][1].flatten()
 
+        rec_jgrad[:, :, kk] = j_grad
+        rec_hgrad[:, kk] = h_grad
+
+    return rec_jgrad, rec_hgrad
+
+
+def _gradient_one_round(kk: int,
+                        cur_j: np.ndarray,
+                        cur_h: np.ndarray,
+                        raw_data_k,
+                        method: str,
+                        train_dat: Dict[str, Any]):
+    """Helper that compute gradient for a single round."""
+    if method == 'pseudo_likelihood':
+        j_grad, h_grad = pseudol_gradient(cur_j, cur_h[:, kk:kk + 1], raw_data_k, directed=train_dat['directed'])
+        h_grad = h_grad.flatten()
+    else:
+        if method == 'maximum_likelihood':
+            corr_para, mean_para = para_moments(cur_j, cur_h[:, kk])
+        elif method == 'mcmc_maximum_likelihood':
+            corr_para, mean_para = samp_moments(
+                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
+        j_grad  = corr_para - raw_data_k[0]
+        h_grad  = mean_para  - raw_data_k[1].flatten()
+
+    return kk, j_grad, h_grad
+
+
+def compute_gradient(cur_j: np.ndarray,
+                     cur_h: np.ndarray,
+                     raw_data: List[Tuple[np.ndarray, np.ndarray]],
+                     method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute the gradient based on the specified method with parallel processing.
+
+    Parameters
+    ----------
+    cur_j : np.ndarray
+        Current j matrix.
+    cur_h : np.ndarray
+        Current h matrix.
+    raw_data : List[Tuple[np.ndarray, np.ndarray]]
+        Raw data used to calculate the gradient (each element is a tuple of correlation and mean).
+    method : str
+        The method to calculate the gradient; possible values are 'pseudo_likelihood',
+        'maximum_likelihood', and 'mcmc_maximum_likelihood'.
+    train_dat : Dict[str, Any]
+        Training data and hyperparameters.
+
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        The gradient of j.
+        The gradient of h.
+    """
+    num_spin, num_round = cur_h.shape
+    rec_jgrad = np.zeros((num_spin, num_spin, num_round))
+    rec_hgrad = np.zeros((num_spin, num_round))
+
+    n_jobs = train_dat.get('max_workers', min(num_round, os.cpu_count())) 
+    chunk = train_dat.get('chunk_size', 1)          # rounds per task
+    backend = 'loky'                                # process‑based
+
+    # print(f'Processing with {n_jobs} workers...')
+    with parallel_backend(backend, n_jobs=n_jobs):
+        results = Parallel(batch_size=chunk)(
+            delayed(_gradient_one_round)(kk, cur_j, cur_h, raw_data[kk], method, train_dat)
+            for kk in range(num_round)
+        )
+
+    for kk, j_grad, h_grad in results:
         rec_jgrad[:, :, kk] = j_grad
         rec_hgrad[:, kk] = h_grad
 

@@ -34,6 +34,7 @@ import matplotlib.patheffects as patheffects
 import warnings
 import itertools
 from typing import List, Dict, Optional, Tuple, Union
+from scipy.stats import skew
 
 
 class AbstractDSPIN(ABC):
@@ -382,8 +383,20 @@ class GeneDSPIN(AbstractDSPIN):
         else:
             self._onmf_rep_ori = adata.X
 
+        gene_skew = np.zeros(num_spin)
+
+        for ii in range(num_spin):
+            cur_gene = self._onmf_rep_ori[:, ii]
+            gene_skew[ii] = skew(cur_gene, bias=False)
+
+        if gene_skew.mean() > 2:
+            default_clip = 95
+            print("Input gene expression seem to be heavy-tailed. Using 95 percentile for clipping before discretization.")
+        else:
+            default_clip = 100
+
         dparams = {'use_default_discretize': True,
-                   'clip_percentile': 95,
+                   'clip_percentile': default_clip,
                    'num_init': 10}
         dparams.update(discretize_params)
         
