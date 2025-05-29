@@ -2,7 +2,9 @@
 
 Tutorial, code and examples of the D-SPIN framework for the preprint "D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response" ([bioRxiv](https://www.biorxiv.org/content/10.1101/2023.04.19.537364))
 
-![alternativetext](figure/readme/Overview_20250523.png)
+<div align="center">
+  <img src="figure/readme/Overview_20250523.png" width="800">
+</div>
 
 ## Installation
 
@@ -22,9 +24,9 @@ The first demo reconstructs the regulatory network of simulated hematopoietic st
 
 [Demo1](https://colab.research.google.com/drive/1Nja8AAcP0L7Ag6DGbyn21SxGafsYX4fA?usp=sharing)
 
-The second demo reconstructs regulatory network and response vector in a single-cell dataset collected in the ThomsonLab.In the dataset, human peripheral blood mononuclear cells (PBMCs) were treated with various signaling molecules with different dosages. 
+The second demo reconstructs regulatory network and response vector in a public single-cell dataset of immune dictionary (Cui, Ang, et al. Nature, 2024), where mouse were treated with different cytokines and lymph nodes were than collected and profiled. 
 
-[Demo2](https://colab.research.google.com/drive/1U2WbmKvai3Y_-vlLV0SY1dv1LHdFjg2w?usp=sharing)
+[Demo2](https://colab.research.google.com/drive/1E8v4awQ-m4D02emG0jp6kmRDmkZ8hjjN?usp=sharing)
 
 ## Dependencies
 
@@ -40,95 +42,134 @@ DSPIN package was tested with the following python packages versions:
 
 Note: other versions may work as well.
 
-## D-SPIN Overview
+## Input data
 
-D-SPIN contains three main steps: 
-* Gene program discovery
-* Network inference
-* Network analysis
+D‑SPIN can work with many perturbation types **as long as they share the same core regulatory network**:
 
-The input data should be AnnData object after typical single-cell preprocessing steps including cell counts normalization, log transformation, highly-varible gene selection, and clustering (optional). The input data should contain the following information. The attribute name is subject to the user while the following are defaults of the code:
-* Normalized, log-transformed and filtered gene expression matrix in adata.X
-* Sample information for each cell in adata.obs['sample_id']
-* Batch information for each cell in adata.obs['batch']
-* Clustering information for each cell in adata.obs['leiden']
-* If some samples are control conditions, the relative response vectors will be computed for each batch with respect to the average of control conditions. The control conditions can be indicated in adata.obs['if_control'] with 1 for control and 0 for non-control. Note that all cells in the same sample and batch should have the same value in adata.obs['if_control'].
+* **Genetic screens** – Perturb‑seq, CRISPR, RNAi  
+* **Chemical or signaling cues** – drug treatments, growth‑factor changes  
+* **Physiological differences** – healthy vs disease, different patients, time‑course samples  
+* **Spatial niches** – local micro‑environments from spatial transcriptomics  
 
-The D-SPIN is initiallized by model = dspin.DSPIN(adata) with the following major arguments:
+Because D‑SPIN models the *entire* distribution of transcriptional states, it expects **single‑cell RNA‑seq** data. Bulk data is possible but less informative.
 
-* adata: AnnData object with the above information
-* save_path: path to save the results
-* num_spin (default 15): number of gene programs in the model
-* filter_threshold (default 0.02): threshold for minimal proportion of cells that each gene program is expressed in
+#### AnnData requirements
 
-### Gene program discovery
+* `adata.X` — log‑normalized (`log1p`) count matrix **after** QC: remove low‑quality cells, filter high mitochondrial content, keep highly variable genes.  
+* `adata.obs['sample_id']` — condition label; cells with the same value form one perturbation group (≥ 25 cells per group is ideal).  
+* `adata.obs['batch']` — batch identifier for cells processed together; D‑SPIN corrects batch effects by comparing conditions within each batch.  
+* `adata.obs['if_control']` — `True` for controls, `False` otherwise; perturbation effects are measured relative to these controls (or to the overall average if no controls exist).  
 
-By default, D-SPIN use orgthogonal non-negative matrix factorization (oNMF) to discover gene programs that coexpress in the data. The user can also specify pre-defined gene programs in full or partial. There are three senarios depending on the num_spin and the input parameter prior_programs.
-* No pre-defined gene programs: empty prior_programs (default)
-* Full pre-defined gene programs: the number of gene programs in prior_programs is equal to num_spin
-* Partial pre-defined gene programs: the number of gene programs in prior_programs is less than num_spin
+## Building network models with D‑SPIN
 
-The gene program discovery contains two stages, the first stage subset and normalize the gene matrix, and the second stage run oNMF multiple times on the subset matrix to obtain consensus gene programs. Subsetting the gene matrix is primarily for computational efficiency, and preferrentially sampling cells with smaller population also helps to avoid overfitting on over-represented cell states in the dataset. As the algorithm for oNMF is stochastic, the algorithm is run multiples times and results from multiple run are combined to obtain a set of consensus gene program. Also, the number of oNMF components can be specified by the user to discover gene programs with finer resolution. For example, run the algorithm with 20 components in each individual run but combine the 20 programs into 15 consensus programs. 
+#### Gene‑level network models
 
-Overall, in the gene program discovery function model.gene_program_discovery() , D-SPIN takes the following major arguments: 
+```python
+from dspin.dspin import DSPIN
 
-* num_onmf_components (int, optional): The number of oNMF components. Default is infer based on num_spin and pre-assigned programs.
-* num_subsample (int, optional): Number of cells to use in each individual oNMF components computation. Default is 10000.
-* num_subsample_large (int, optional): Number of cells to use in computing consensus oNMF components. Default is 5 times of num_subsample.
-* num_repeat (int, optional): Number of times to repeat the oNMF computation. Default is 10.
-* balance_obs (str, optional): Cell type or clustering label in adata.obs for balanced sampling. Default is None.
-* balance_method (str, optional): Method used for balancing. Options are 'squareroot', 'equal', 'proportional'. Default is 'squareroot'. 
-* max_sample_rate (float, optional): Maximum oversampling rate for underrepresented cell type or clustering categories. Default is 2.
-* prior_programs (List[List[str]], optional): List of pre-assigned gene programs. Default is None.
-* summary_method (str, optional): Method used for computing sensus oNMF components. Options are 'kmeans' and 'leiden'. Default is 'kmeans'.
+model = DSPIN(adata, save_path, num_spin=adata.shape[1])
+model.network_inference(
+    sample_id_key='sample_id',
+    method='pseudo_likelihood',
+    directed=True,
+    run_with_matlab=False,
+    params={'stepsz': 0.05, 'lam_l1_j': 0.01}
+)
+model.response_relative_to_control(
+    sample_id_key='sample_id',
+    if_control_key='if_control',
+    batch_key='batch'
+)
+```
 
-### Network inference
+* **Results saved to `model`:**
+  * `model.network` – regulatory weights **J**
+  * `model.responses` – gene‑level responses **h**
+  * `model.relative_responses` – responses relative to control (per batch)
 
-In the network inference step, D-SPIN automatically choose between three inference methods depending on the number of gene programs:
+* **Key options**
+  * `num_spin=adata.shape[1]` → build a *gene‑level* network  
+  * `directed=True` → only supported with `pseudo_likelihood`  
+  * `run_with_matlab=True` → skip Python inference and write variables to `save_path` for the MATLAB version (speeds up very large data sets)  
+  * `params` → hyper‑parameters such as step size, training epochs, and L1/L2 regularisation  
 
-* Exact maximum-likelihood inference (MLE)
-* Markov-Chain Monte-Carlo (MCMC) maximum-likelihood inference 
-* Pseudo-likelihood inference (PL). 
+---
 
-MLE is exactly solution of the problem but only applies to small network. MCMC is slightly more scalable to networks with 20-40 nodes. PL takes more simplified approximation to the problem which scales to hundreds of nodes, but requires larger cell number for the approximation to be effective. in the gene program discovery function model.network_inference(), D-SPIN takes the following major arguments
+#### Program‑level network models
 
-* sample_col_name (str, optional): Column name in adata.obs for sample information. Default is 'sample_id'
-* control_col_name (str, optional): Column name in adata.obs for whether the cell is in a control sample. If not provided, all cells are treated as non-control and relative response vector are the same as response vector.
-* batch_col_name (str, optional): Column name in adata.obs for batch information. Relative response are computed by the control response vector in the same batch. If not provided, all cells are treated as one batch. 
-* method (str, optional): Method used for network inference. Options are 'auto', 'maximum_likelihood', 'mcmc_maximum_likelihood', 'pseudo_likelihood'.
-* example_list (List[str], optional): List of samples to use for network inference. Default is using all samples available in adata.obs[sample_col_name].
-* record_step (int, optional): Number of steps to record training progress. Default is 10.
-* params (Dict[str, Any], optional): Hypterparameters for the gradient descent of network inference. Default is None.
+```python
+from dspin.dspin import DSPIN
+
+model = DSPIN(adata, save_path, num_spin=15)      # 15 gene programs
+model.gene_program_discovery(
+    num_repeat=10,
+    seed=0,
+    cluster_key='cell_type'                       # balance cell types
+)
+model.network_inference(
+    sample_id_key='sample_id',
+    method='mcmc_maximum_likelihood'
+)
+model.response_relative_to_control()
+```
+
+* **Extra outputs**
+  * Gene‑program compositions in `save_path/onmf`
+  * Consensus program gene lists in `save_path`
+
+* **Tips**
+  * Choose `num_spin` ≈ 5 × (number of cell types); keep ≤ 40  
+  * `cluster_key` lets D‑SPIN down‑sample over‑represented cell types before oNMF  
+
+---
+
+#### Finding gene regulators of programs
+
+```python
+# model_program : program‑level DSPIN object
+# model_gene    : gene‑level   DSPIN object
+model_gene.program_regulator_discovery(
+    model_program.program_representation,
+    sample_id_key='sample_id',
+    params={'stepsz': 0.02, 'lam_l1_interaction': 0.01}
+)
+```
+
+* **Prerequisite** – `adata.obs` metadata must match between the two models so each cell’s gene and program states align.
+
+* **Outputs in `model_gene`:**
+  * `model_gene.program_interactions` – regression coefficients **J** (gene ↔ program)
+  * `model_gene.program_activities` – global activity **h** for each program
 
 
-### Network analysis 
+## Application to the T cell population of the immune dictionary dataset
 
-After network inference, D-SPIN provides three outputs:
 
-* Inferred network adjacenty matrix in model.network 
-* Inferred pertrubation response in model.response
-* Relative perturbation response to control in model.relative_response
+<div align="center">
+  <img src="figure/readme/Figure2_immune_dictionary.png" width="600">
+</div>
 
-Typical downstream analysis includes network visualization, module identification, and graph clustering of perturbation response with the network. 
+<div align="left">
+  <em>Figure&nbsp; Overview and program discovery for the immune dictionary dataset. (A) t-distributed stochastic neighbour (t-SNE) embedding for a subsetted cell population from the immune dictionary dataset \cite{cui2024dictionary}. The subset dataset includes CD4, CD8, and regulatory T cells treated by 12 different cytokines, as well as corresponding control samples treated by phosphate-buffered saline (PBS). 
+(B) Heatmaps of gene expression and discretized gene program levels for control and IFN-$\alpha$1-treated samples. The gene programs are weighted averages of single-gene expressions that characterize and denoise the major expression pattern of the gene matrix.</em>
+</div>
 
-## Application to signaling response data of human PBMCs
+<div align="center">
+  <img src="figure/readme/Figure3_program_network.png" width="600">
+</div>
 
-D-SPIN takes single-cell sequencing data of multiple perturbation conditions. In the second demo, PBMCs are treated with different signaling molecules such as CD3 antibody, LPS, IL1B, and TGFB1
-
-![alternativetext](figure/thomsonlab_signaling/example_conditions.png)
-
-D-SPIN identifies a set of gene programs that coexpress in the data, and represent each cell as a combination of gene program expression states. 
-
-![alternativetext](figure/thomsonlab_signaling/gene_program_example.png)
-
-D-SPIN uses cross-correlation and mean of each perturbation condition to inferred a unified regulatory network and the response vector of each perturbation condition. The inference can be parallelized across perturbation conditions. The inference code is in MATLAB using "parfor", while for demo purpose Python code (without parallelization) is provided.
-
-The inferred regulatory network and perturbations can be jointly analyzed to reveal how perturbations act in the context of the regulatory network.
-
-![alternativetext](figure/thomsonlab_signaling/joint_network_perturbation.png)
+<div align="left">
+  <em>Figure&nbsp; Program/gene-level regulatory network inferred by D-SPIN.
+(A) Diagram of D-SPIN-inferred network model on gene programs. The network is partitioned into 4 modules, each associated with a T cell type in the population.
+(B) Heatmap of the program response of each cytokine. Clustering of the response partitioned the cytokines into 3 major categories. 
+(C) Diagram of the core subnetwork of the D-SPIN-inferred gene network model. The node sizes scale with the number of identified interactions. The network is partitioned into 4 modules, each primarily composed of genes that have elevated expression in one specific T cell type.
+(D) Interaction diagram for the subnetwork of IFN-$\alpha$1/IFN-$\beta$ and IFN-$\gamma$ acting on the program P18-IFN-$\gamma$ response. D-SPIN model shows that Type I and Type II interferons have different effectors to activate the program.</em>
+</div>
 
 ## References
 
 1. Jiang, Jialong, et al. "D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response." bioRxiv (2023).
 
 2. Pratapa, Aditya, et al. "Benchmarking algorithms for gene regulatory network inference from single-cell transcriptomic data." Nature methods 17.2 (2020): 147-154.
+
+3. Cui, Ang, et al. "Dictionary of immune responses to cytokines at single-cell resolution." Nature 625.7994 (2024): 377-384.
