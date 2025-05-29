@@ -634,6 +634,7 @@ def para_moments(j_mat: np.ndarray,
 
     return corr_para, mean_para
 
+
 @numba.njit(fastmath=True)
 def pseudol_gradient(cur_j: np.ndarray, 
                      cur_h: np.ndarray, 
@@ -795,7 +796,7 @@ def samp_moments(j_mat: np.ndarray,
     return corr_para, mean_para
 
 
-def compute_gradient_serial(cur_j: np.ndarray,
+def compute_gradient(cur_j: np.ndarray,
                             cur_h: np.ndarray,
                             raw_data: List[Tuple[np.ndarray, np.ndarray]],
                             method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
@@ -872,7 +873,7 @@ def _gradient_one_round(kk: int,
     return kk, j_grad, h_grad
 
 
-def compute_gradient(cur_j: np.ndarray,
+def compute_gradient_para(cur_j: np.ndarray,
                      cur_h: np.ndarray,
                      raw_data: List[Tuple[np.ndarray, np.ndarray]],
                      method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:

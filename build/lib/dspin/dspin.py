@@ -338,8 +338,8 @@ class AbstractDSPIN(ABC):
             raise ValueError(f"Column '{batch_key}' not found in adata.obs.")
         
         sample_list = self._samp_list
-        sample_to_control = self.adata.obs.groupby(sample_id_key)[if_control_key].first().to_dict()
-        sample_to_batch = self.adata.obs.groupby(sample_id_key)[batch_key].first().to_dict()
+        sample_to_control = self.adata.obs.groupby(sample_id_key, observed=False)[if_control_key].first().to_dict()
+        sample_to_batch = self.adata.obs.groupby(sample_id_key, observed=False)[batch_key].first().to_dict()
 
         if_control = np.array([sample_to_control[sample] for sample in sample_list])
         batch_index = np.array([sample_to_batch[sample] for sample in sample_list])
@@ -562,7 +562,6 @@ class ProgramDSPIN(AbstractDSPIN):
                                cluster_key: str = 'leiden',
                                mode: str = 'compute_summary',
                                prior_programs: List[List[str]] = None,
-                               clip_percentile: float = 100,
                                params: dict = {},
                                discretize_params: dict = {}) -> None:
         """
@@ -580,10 +579,10 @@ class ProgramDSPIN(AbstractDSPIN):
             Mode of operation. Options: 'compute_summary', 'compute_only', 'summary_only'. Default is 'compute_summary'.
         prior_programs : List[List[str]], optional
             List of predefined gene programs. Default is None.
-        clip_percentile : float, optional
-            Percentile for clipping values before discretization. Default is 100.
         params : dict, optional
             Additional parameters for oNMF. Default is an empty dictionary.
+        discretize_params : dict, optional
+            Parameters for discretization of the oNMF representation. Default is an empty dictionary.
         """
 
         if mode not in ['compute_summary', 'compute_only', 'summary_only']:

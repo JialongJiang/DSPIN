@@ -20,9 +20,7 @@ from tqdm import tqdm
 from typing import Tuple, List, Callable, Any, Dict
 import warnings
 from scipy.sparse import issparse
-from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 from joblib import Parallel, delayed, parallel_backend
-
 
 
 def category_balance_number(
@@ -636,6 +634,7 @@ def para_moments(j_mat: np.ndarray,
 
     return corr_para, mean_para
 
+
 @numba.njit(fastmath=True)
 def pseudol_gradient(cur_j: np.ndarray, 
                      cur_h: np.ndarray, 
@@ -797,7 +796,7 @@ def samp_moments(j_mat: np.ndarray,
     return corr_para, mean_para
 
 
-def compute_gradient_serial(cur_j: np.ndarray,
+def compute_gradient(cur_j: np.ndarray,
                             cur_h: np.ndarray,
                             raw_data: List[Tuple[np.ndarray, np.ndarray]],
                             method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
@@ -874,54 +873,7 @@ def _gradient_one_round(kk: int,
     return kk, j_grad, h_grad
 
 
-def compute_gradient_test(cur_j: np.ndarray,
-                     cur_h: np.ndarray,
-                     raw_data: List[Tuple[np.ndarray, np.ndarray]],
-                     method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Compute the gradient based on the specified method with parallel processing.
-
-    Parameters
-    ----------
-    cur_j : np.ndarray
-        Current j matrix.
-    cur_h : np.ndarray
-        Current h matrix.
-    raw_data : List[Tuple[np.ndarray, np.ndarray]]
-        Raw data used to calculate the gradient (each element is a tuple of correlation and mean).
-    method : str
-        The method to calculate the gradient; possible values are 'pseudo_likelihood',
-        'maximum_likelihood', and 'mcmc_maximum_likelihood'.
-    train_dat : Dict[str, Any]
-        Training data and hyperparameters.
-
-    Returns
-    -------
-    Tuple[np.array, np.array]
-        The gradient of j.
-        The gradient of h.
-    """
-    num_spin, num_round = cur_h.shape
-    rec_jgrad = np.zeros((num_spin, num_spin, num_round))
-    rec_hgrad = np.zeros((num_spin, num_round))
-
-    if 'max_workers' in train_dat:
-        max_workers = train_dat['max_workers']
-    else:
-        max_workers = os.cpu_count()
-
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(_gradient_one_round, kk, cur_j, cur_h, raw_data[kk], method, train_dat) for kk in range(num_round)]
-
-        for fut in as_completed(futures):
-            kk, j_grad, h_grad = fut.result()
-            rec_jgrad[:, :, kk] = j_grad
-            rec_hgrad[:, kk] = h_grad
-
-    return rec_jgrad, rec_hgrad
-
-
-def compute_gradient(cur_j: np.ndarray,
+def compute_gradient_para(cur_j: np.ndarray,
                      cur_h: np.ndarray,
                      raw_data: List[Tuple[np.ndarray, np.ndarray]],
                      method: str, train_dat: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
@@ -953,9 +905,10 @@ def compute_gradient(cur_j: np.ndarray,
     rec_hgrad = np.zeros((num_spin, num_round))
 
     n_jobs = train_dat.get('max_workers', min(num_round, os.cpu_count())) 
-    chunk  = train_dat.get('chunk_size', 1)          # rounds per task
+    chunk = train_dat.get('chunk_size', 1)          # rounds per task
     backend = 'loky'                                # process‑based
 
+    # print(f'Processing with {n_jobs} workers...')
     with parallel_backend(backend, n_jobs=n_jobs):
         results = Parallel(batch_size=chunk)(
             delayed(_gradient_one_round)(kk, cur_j, cur_h, raw_data[kk], method, train_dat)
@@ -1151,6 +1104,8 @@ def learn_network_adam(raw_data: Any,
 
     backtrack_counter = 0
     counter = 1
+    
+    tqdm._instances.clear()
     pbar = tqdm(total=num_epoch)
 
     while counter <= num_epoch:
