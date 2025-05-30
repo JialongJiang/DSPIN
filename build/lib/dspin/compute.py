@@ -108,7 +108,7 @@ def summary_components(all_components: np.array,
         gene_weight = np.sum(all_components ** 2, axis=0) ** 0.5
         gene_sele_filt = gene_weight > np.mean(gene_weight)
         all_components_sub = all_components[:, gene_sele_filt]
-        kmeans_gene = KMeans(n_clusters=2 * num_spin, random_state=0, n_init=10).fit(all_components_sub.T)
+        kmeans_gene = KMeans(n_clusters=min(2 * num_spin, all_components_sub.shape[1]), random_state=0, n_init=10).fit(all_components_sub.T)
 
         # Initialize an array to store the average component for each cluster.
         components_kmeans = np.zeros((num_spin, num_gene))

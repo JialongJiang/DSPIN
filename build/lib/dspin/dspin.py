@@ -207,6 +207,7 @@ class AbstractDSPIN(ABC):
             self._samp_list = self._samp_list[example_list_ind]
             raw_data = raw_data[example_list_ind]
             self._raw_data = raw_data
+            print("Using a subset of {} samples for network inference.".format(len(self._samp_list)))
 
         num_sample = len(raw_data)
         params = {'num_epoch': 400,

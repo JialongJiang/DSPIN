@@ -21,7 +21,7 @@ install_requires = [
 # ]
 
 # Managing your version (adjust accordingly)
-version = "1.3.2"  # You can manage versioning in a more sophisticated way if needed
+version = "1.3.3"  # You can manage versioning in a more sophisticated way if needed
 
 # Long description (usually a README file)
 readme = open("README_PyPI.md").read()  # Adjust the file name if necessary

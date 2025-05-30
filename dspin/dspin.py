@@ -207,6 +207,7 @@ class AbstractDSPIN(ABC):
             self._samp_list = self._samp_list[example_list_ind]
             raw_data = raw_data[example_list_ind]
             self._raw_data = raw_data
+            print("Using a subset of {} samples for network inference.".format(len(self._samp_list)))
 
         num_sample = len(raw_data)
         params = {'num_epoch': 400,
@@ -653,7 +654,7 @@ class ProgramDSPIN(AbstractDSPIN):
         if mode == 'compute_summary' or mode == 'summary_only':
 
             # Perform subsampling and standard deviation clipping on the matrix
-            std_clipped, sub_large_gene_matrix_normed = subsample_normalize_gene_matrix(cur_gene_matrix, cluster_label, num_subsample=onmf_parameters['num_subsample_large'], seed=seed + rep, params=onmf_parameters)
+            std_clipped, sub_large_gene_matrix_normed = subsample_normalize_gene_matrix(cur_gene_matrix, cluster_label, num_subsample=onmf_parameters['num_subsample_large'], seed=seed, params=onmf_parameters)
             self.matrix_std = std_clipped
             
             # Summarize the oNMF decompositions
