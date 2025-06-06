@@ -21,7 +21,7 @@ from scipy import optimize
 from scipy.spatial.distance import pdist
 
 
-def onmf_to_csv(features, gene_name, file_path, thres=0.01):
+def onmf_to_csv(features, gene_name, file_path, thres=0.01, if_write_weights=False):
     """
     Extract gene names in ONMF to CSV.
 
@@ -30,6 +30,7 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
     gene_name (List[str]): Names of the genes corresponding to feature indices.
     file_path (str): Path of the file where the CSV will be written.
     thres (float): Threshold value for filtering features.
+    if_write_weights (bool): If True, writes weights to the CSV file.
 
     Returns:
     str: Path of the created CSV file.
@@ -50,6 +51,11 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
             # Insert the spin number at the beginning of the row
             cur_line.insert(0, spin)
             write.writerow(cur_line)  # Write the current line to the CSV file
+
+            if if_write_weights:
+                cur_line = [features[spin, ind].round(6) for ind in gene_ind]
+                cur_line.insert(0, f'Weights_{spin}')
+                write.writerow(cur_line)
 
     # Read the created CSV, transpose it and save it again
     pd_csv = pd.read_csv(file_path, names=range(rec_max_gene + 1))

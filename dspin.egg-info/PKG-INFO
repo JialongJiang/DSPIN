@@ -1,6 +1,6 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: dspin
-Version: 1.3.4
+Version: 1.3.5
 Summary: Regulatory network models from single-cell perturbation profiling
 Home-page: https://github.com/JialongJiang/DSPIN
 Author: Jialong Jiang
@@ -25,6 +25,18 @@ Requires-Dist: scanpy
 Requires-Dist: tqdm
 Requires-Dist: igraph
 Requires-Dist: leidenalg
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
 # D-SPIN: Constructing regulatory network models from scRNA-seq perturbation profiling  
 

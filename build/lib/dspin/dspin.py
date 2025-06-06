@@ -609,9 +609,9 @@ class ProgramDSPIN(AbstractDSPIN):
             Parameters for discretization of the oNMF representation. Default is an empty dictionary.
         """
 
-        if mode not in ['compute_summary', 'compute_only', 'summary_only']:
+        if mode not in ['compute_summary', 'compute_only', 'summary_only', 'precomputed']:
             raise ValueError(
-                'Mode must be one of compute_summary, compute_only, or summary_only')
+                'Mode must be one of compute_summary, compute_only, summary_only, or precomputed.')
         
         adata = self.adata
         num_spin = self.num_spin
@@ -631,7 +631,7 @@ class ProgramDSPIN(AbstractDSPIN):
         
         if onmf_parameters['num_subsample_large'] is None:
             onmf_parameters['num_subsample_large'] = min(onmf_parameters['num_subsample'] * 5, adata.shape[0])
-            print(onmf_parameters['num_subsample_large'])
+            # print(onmf_parameters['num_subsample_large'])
 
         if onmf_parameters['balance_method'] not in ['equal', 'proportional', 'squareroot', None]:
             raise ValueError('balance_method must be one of equal, proportional, squareroot, or None')
@@ -681,7 +681,7 @@ class ProgramDSPIN(AbstractDSPIN):
 
                 compute_onmf_decomposition(sub_gene_matrix_normed, num_onmf_components, seed=cur_seed, params=onmf_parameters, save_path=self.save_path + f'onmf/onmf_components_{num_onmf_components}_repeat_{cur_seed}.npy')
             
-        if mode == 'compute_summary' or mode == 'summary_only':
+        if mode == 'compute_summary' or mode == 'summary_only' or mode == 'precomputed':
             
             cluster_label_raw = adata.obs[cluster_key].values
             cluster_label = pd.factorize(cluster_label_raw)[0]
@@ -689,18 +689,28 @@ class ProgramDSPIN(AbstractDSPIN):
             # Perform subsampling and standard deviation clipping on the matrix
             std_clipped, sub_large_gene_matrix_normed = subsample_normalize_gene_matrix(adata.X, cluster_label, num_subsample=onmf_parameters['num_subsample_large'], seed=seed, params=onmf_parameters)
             self.matrix_std = std_clipped
-            
-            # Summarize the oNMF decompositions
-            if num_onmf_components > 0:
-                onmf_summary = self.summarize_onmf_result(sub_large_gene_matrix_normed, num_onmf_components, num_repeat)
+
+            if mode != 'precomputed':
+                # Summarize the oNMF decompositions
+                if num_onmf_components > 0:
+                    onmf_summary = self.summarize_onmf_result(sub_large_gene_matrix_normed, num_onmf_components, num_repeat)
+                else:
+                    onmf_summary = self.compute_onmf_expression(sub_large_gene_matrix_normed, prior_program_ind)
+                
+                onmf_save_path = self.save_path + f'onmf/onmf_summary_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}.npy'
+                np.save(onmf_save_path, onmf_summary)
+                print(f"Consensus oNMF results saved to {onmf_save_path}")
             else:
-                onmf_summary = self.compute_onmf_expression(sub_large_gene_matrix_normed, prior_program_ind)
+                assert 'precomputed_onmf_path' in params.keys(), "For precomputed mode, 'precomputed_onmf_path' must be provided in params."
+                onmf_summary = np.load(params['precomputed_onmf_path'], allow_pickle=True).item()
             
             self._onmf_summary = onmf_summary
 
             # Save the gene programs to a CSV file
             file_path = onmf_to_csv(onmf_summary.components_, adata.var_names, self.save_path + f'gene_programs_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}.csv', thres=0.01)
-            print('Gene programs saved to {}'.format(file_path))
+            print('Gene program information saved to {}'.format(file_path))
+            file_wpath = onmf_to_csv(onmf_summary.components_, adata.var_names, self.save_path + f'gene_programs_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}_weights.csv', thres=0.01, if_write_weights=True)
+            # print('Gene programs saved to {}'.format(file_path))
             self.gene_program_csv = file_path
 
             gene_matrix = self.adata.X

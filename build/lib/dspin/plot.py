@@ -4,7 +4,6 @@
 @Author  :   Jialong Jiang, Yingying Gong
 '''
 
-import warnings
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as patheffects
 from sklearn.cluster import KMeans
@@ -22,7 +21,7 @@ from scipy import optimize
 from scipy.spatial.distance import pdist
 
 
-def onmf_to_csv(features, gene_name, file_path, thres=0.01):
+def onmf_to_csv(features, gene_name, file_path, thres=0.01, if_write_weights=False):
     """
     Extract gene names in ONMF to CSV.
 
@@ -31,6 +30,7 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
     gene_name (List[str]): Names of the genes corresponding to feature indices.
     file_path (str): Path of the file where the CSV will be written.
     thres (float): Threshold value for filtering features.
+    if_write_weights (bool): If True, writes weights to the CSV file.
 
     Returns:
     str: Path of the created CSV file.
@@ -51,6 +51,11 @@ def onmf_to_csv(features, gene_name, file_path, thres=0.01):
             # Insert the spin number at the beginning of the row
             cur_line.insert(0, spin)
             write.writerow(cur_line)  # Write the current line to the CSV file
+
+            if if_write_weights:
+                cur_line = [features[spin, ind].round(6) for ind in gene_ind]
+                cur_line.insert(0, f'Weights_{spin}')
+                write.writerow(cur_line)
 
     # Read the created CSV, transpose it and save it again
     pd_csv = pd.read_csv(file_path, names=range(rec_max_gene + 1))
@@ -142,7 +147,7 @@ def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
 
     return program_umap_pos
 
-def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, subsample=True, target_subsample_size=20000):
+def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, subsample=True):
     """
     Plot gene programs on the UMAP plot.
 
@@ -152,25 +157,16 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
     program_umap_pos (numpy.ndarray): The assigned positions of gene programs on the UMAP plot.
     fig_folder (str): The folder where the output figure is saved.
     subsample (bool): Whether to subsample the data for plotting.
-    target_subsample_size (int): The number of cells to subsample to for large datasets. Defaults to 20,000. If the
-    number of cells is smaller than this size, will default to the number of cells.
 
     Returns:
-    str or None: Path of the created figure if created, None otherwise
+    str: Path of the created figure.
     """
 
     num_spin = onmf_rep.shape[1]
 
     if subsample:
-        num_cells = onmf_rep.shape[0]
-        if num_cells < target_subsample_size:
-            warnings.warn(
-                f"Requested subsampling to {target_subsample_size} cells but dataset only has "
-                f"{num_cells} cells. Using all available cells.",
-                UserWarning
-            )
-        subsample_size = min(target_subsample_size, num_cells)
-        sub_ind = np.random.choice(onmf_rep.shape[0], subsample_size, replace=False)
+        num_subsample = 20000
+        sub_ind = np.random.choice(onmf_rep.shape[0], num_subsample, replace=False)
         onmf_rep = onmf_rep[sub_ind, :]
         umap_all = umap_all[sub_ind, :]
 
