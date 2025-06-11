@@ -232,15 +232,16 @@ def onmf(X: np.array, rank: int, max_iter: int = 500) -> Tuple[np.array, np.arra
         coef_S = AtX / S.dot(AtX.T).dot(S)
         S = np.nan_to_num(S * coef_S) #, posinf=1e5)
 
-        pbar.update(1)
+        # pbar.update(1)
 
         # Calculate the reconstruction error every 10 iterations and update the
         # progress bar
-        if itr % 10 == 0:
+        if itr % 20 == 0:
             error = np.linalg.norm(X - np.dot(A, S), 'fro')
             self_product = S.dot(S.T)
             orthogonal_error = np.linalg.norm(self_product - np.diag(np.diag(self_product)), 'fro') / np.linalg.norm(S, 'fro')
             pbar.set_postfix({"Reconstruction error": f"{error:.2f}", "Orthogonal error": f"{orthogonal_error:.4f}"})
+            pbar.update(20)
 
     pbar.close()
 
@@ -608,7 +609,7 @@ def para_moments(j_mat: np.ndarray,
             spins[s] = (tmp % 3) - 1
             tmp //= 3
 
-        # Energy: E = −h·s − ½ sᵀJs
+        # Energy: E = −h·s − s'Js / 2
         energy: float = 0.0
         for ii in range(num_spin):
             energy -= h_vec[ii] * spins[ii]
@@ -796,6 +797,28 @@ def samp_moments(j_mat: np.ndarray,
     return corr_para, mean_para
 
 
+def _gradient_one_round(kk: int,
+                        cur_j: np.ndarray,
+                        cur_h: np.ndarray,
+                        raw_data_k,
+                        method: str,
+                        train_dat: Dict[str, Any]):
+    """Helper that compute gradient for a single round."""
+    if method == 'pseudo_likelihood':
+        j_grad, h_grad = pseudol_gradient(cur_j, cur_h[:, kk:kk + 1], raw_data_k, directed=train_dat['directed'])
+        h_grad = h_grad.flatten()
+    else:
+        if method == 'maximum_likelihood':
+            corr_para, mean_para = para_moments(cur_j, cur_h[:, kk])
+        elif method == 'mcmc_maximum_likelihood':
+            corr_para, mean_para = samp_moments(
+                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
+        j_grad  = corr_para - raw_data_k[0]
+        h_grad  = mean_para  - raw_data_k[1].flatten()
+
+    return kk, j_grad, h_grad
+
+
 def compute_gradient(cur_j: np.ndarray,
                             cur_h: np.ndarray,
                             raw_data: List[Tuple[np.ndarray, np.ndarray]],
@@ -828,49 +851,32 @@ def compute_gradient(cur_j: np.ndarray,
     rec_jgrad = np.zeros((num_spin, num_spin, num_round))
     rec_hgrad = np.zeros((num_spin, num_round))
 
-    for kk in range(num_round):
-        # Computing gradients using the specified method.
-        if method == 'pseudo_likelihood':
+    if method == 'pseudo_likelihood':
+         for kk in range(num_round):
+            # Computing gradients using the specified method.
             j_grad, h_grad = pseudol_gradient(
                 cur_j, cur_h[:, kk: kk + 1], raw_data[kk], directed=train_dat['directed'])
             h_grad = h_grad.flatten()
-        else:
-            # Distinguishing between other methods and computing gradients
-            # accordingly
-            if method == 'maximum_likelihood':
-                corr_para, mean_para = para_moments(cur_j, cur_h[:, kk])
-            elif method == 'mcmc_maximum_likelihood':
-                corr_para, mean_para = samp_moments(
-                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
-            j_grad = corr_para - raw_data[kk][0]
-            h_grad = mean_para - raw_data[kk][1].flatten()
 
-        rec_jgrad[:, :, kk] = j_grad
-        rec_hgrad[:, kk] = h_grad
-
-    return rec_jgrad, rec_hgrad
-
-
-def _gradient_one_round(kk: int,
-                        cur_j: np.ndarray,
-                        cur_h: np.ndarray,
-                        raw_data_k,
-                        method: str,
-                        train_dat: Dict[str, Any]):
-    """Helper that compute gradient for a single round."""
-    if method == 'pseudo_likelihood':
-        j_grad, h_grad = pseudol_gradient(cur_j, cur_h[:, kk:kk + 1], raw_data_k, directed=train_dat['directed'])
-        h_grad = h_grad.flatten()
+            rec_jgrad[:, :, kk] = j_grad
+            rec_hgrad[:, kk] = h_grad
     else:
-        if method == 'maximum_likelihood':
-            corr_para, mean_para = para_moments(cur_j, cur_h[:, kk])
-        elif method == 'mcmc_maximum_likelihood':
-            corr_para, mean_para = samp_moments(
-                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
-        j_grad  = corr_para - raw_data_k[0]
-        h_grad  = mean_para  - raw_data_k[1].flatten()
+        n_jobs = train_dat.get('max_workers', min(num_round, os.cpu_count())) 
+        chunk = train_dat.get('chunk_size', 1)          # rounds per task
+        backend = 'loky'                                # process‑based
 
-    return kk, j_grad, h_grad
+        # print(f'Processing with {n_jobs} workers...')
+        with parallel_backend(backend, n_jobs=n_jobs):
+            results = Parallel(batch_size=chunk)(
+                delayed(_gradient_one_round)(kk, cur_j, cur_h, raw_data[kk], method, train_dat)
+                for kk in range(num_round)
+            )
+
+        for kk, j_grad, h_grad in results:
+            rec_jgrad[:, :, kk] = j_grad
+            rec_hgrad[:, kk] = h_grad
+        
+    return rec_jgrad, rec_hgrad
 
 
 def compute_gradient_para(cur_j: np.ndarray,
