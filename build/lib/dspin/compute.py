@@ -1159,7 +1159,6 @@ def learn_network_adam(raw_data: Any,
         if (counter > backtrack_gap) and (rec_jgrad_sum_norm[counter - 1] > 1.5 * rec_jgrad_sum_norm[counter - 1 - backtrack_gap]):
             if_backtrack = True
             
-
         if (counter > 2 * backtrack_gap) and (counter % backtrack_gap == 0):
 
             est_cur_grad = rec_jgrad_sum_norm[counter - 1 - backtrack_gap: counter - 1].mean()
@@ -1167,7 +1166,6 @@ def learn_network_adam(raw_data: Any,
 
             if est_cur_grad > 1.05 * est_prev_grad:
                 if_backtrack = True
-
 
         if if_backtrack:
             print('Backtracking at epoch %d' % counter)
@@ -1186,8 +1184,7 @@ def learn_network_adam(raw_data: Any,
 
     pbar.close()
 
-    # Retrieve parameters corresponding to the minimum gradient norm found
-    # during training
+    # Retrieve parameters corresponding to the minimum gradient norm found during training
     trace_epoch = 50 + num_epoch - counter
     pos = num_epoch - trace_epoch + np.argmin(rec_jgrad_sum_norm[- trace_epoch: ])
     # print(pos)
@@ -1227,16 +1224,14 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     num_round = len(gene_states)
 
     num_epoch, stepsz, rec_gap = (
-        train_dat.get(
-            key, None) for key in [
+        train_dat.get(key, None) for key in [
             "num_epoch", "stepsz", "rec_gap"])
     list_step = np.arange(num_epoch, 0, - rec_gap)[::-1]
 
     save_path = train_dat.get('save_path', None)
 
     backtrack_gap, backtrack_tol = (
-        train_dat.get(
-            key, None) for key in [
+        train_dat.get(key, None) for key in [
             "backtrack_gap", "backtrack_tol"])
 
     lambda_l1_j, lambda_l2_j = (train_dat.get(key, 0) for key in ["lambda_l1_j", "lambda_l2_j"])
@@ -1252,6 +1247,10 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     samp_weight = samp_weight / np.sum(samp_weight)
     
     # Preallocate gradient norm recording (optional)
+    rec_interaction_all = np.zeros((num_epoch, num_gene, num_program))
+    rec_selfj_all = np.zeros((num_epoch, num_program))
+    rec_selfh_all = np.zeros((num_epoch, num_program))
+    
     rec_grad = np.zeros(num_epoch)
 
     m_interaction, v_interaction = np.zeros_like(cur_interaction), np.zeros_like(cur_interaction)
@@ -1271,9 +1270,14 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     rec_interaction_grad = np.zeros((num_round, num_gene, num_program))
     rec_selfj_grad = np.zeros((num_round, num_program))
     rec_selfh_grad = np.zeros((num_round, num_program))
-    
+
+    log_adam_grad = {name: deque(maxlen=backtrack_gap)
+                     for name in ["m_interaction", "v_interaction", "m_selfj", "v_selfj", "m_selfh", "v_selfh"]}
+
+    tqdm._instances.clear()
     pbar = tqdm(total=num_epoch)
     counter = 1
+    backtrack_counter = 0
 
     while counter <= num_epoch:
 
@@ -1326,15 +1330,52 @@ def learn_program_regulators(gene_states: List[np.ndarray],
         update_val, m_selfh, v_selfh = update_adam(selfh_grad, m_selfh, v_selfh, counter, stepsz)
         cur_selfh = cur_selfh - update_val
         
+        rec_interaction_all[counter - 1, :, :] = cur_interaction
+        rec_selfj_all[counter - 1, :] = cur_selfj
+        rec_selfh_all[counter - 1, :] = cur_selfh
+        
+        for name, value in zip(["m_interaction", "v_interaction", "m_selfj", "v_selfj", "m_selfh", "v_selfh"], [m_interaction, v_interaction, m_selfj, v_selfj, m_selfh, v_selfh]):
+            log_adam_grad[name].append(value)
+        
         # Record gradient norm (optional)
         rec_grad[counter - 1] = np.linalg.norm(interaction_grad)
         
         if counter in list_step:
             pbar.update(rec_gap)
-            pbar.set_postfix({"Network Gradient": f"{rec_grad[counter - 1]:.4f}"})
+            pbar.set_postfix({"Network Gradient": f"{rec_grad[counter - 1]:.6f}"})
 
-        counter += 1
+        if_backtrack = False
+        if (counter > backtrack_gap) and (rec_grad[counter - 1] > 1.5 * rec_grad[counter - 1 - backtrack_gap]):
+            if_backtrack = True
+            
+        if (counter > 2 * backtrack_gap) and (counter % backtrack_gap == 0):
+            est_cur_grad = rec_grad[counter - 1 - backtrack_gap: counter - 1].mean()
+            est_prev_grad = rec_grad[counter - 1 - 2 * backtrack_gap: counter - 1 - backtrack_gap].mean()
+            
+            if est_cur_grad > 1.05 * est_prev_grad:
+                if_backtrack = True
+
+        if if_backtrack:
+            print('Backtracking at epoch %d' % counter)
+            backtrack_counter += 1
+            m_interaction, v_interaction, m_selfj, v_selfj, m_selfh, v_selfh = [log_adam_grad[key][0] for key in ["m_interaction", "v_interaction", "m_selfj", "v_selfj", "m_selfh", "v_selfh"]]
+            counter = counter - backtrack_gap
+            stepsz = stepsz / 4
+            if backtrack_counter > backtrack_tol:
+                print(f'Backtracking more than {backtrack_tol} times, stop training.')
+                break
+        else:   
+            counter += 1
     
+    pbar.close()
+
+    # Retrieve parameters corresponding to the minimum gradient norm found during training
+    trace_epoch = 50 + num_epoch - counter
+    pos = num_epoch - trace_epoch + np.argmin(rec_grad[- trace_epoch: ])
+    cur_interaction = rec_interaction_all[pos, :, :]
+    cur_selfj = rec_selfj_all[pos, :]
+    cur_selfh = rec_selfh_all[pos, :]
+
     return cur_interaction, cur_selfj, cur_selfh
 
 

@@ -241,7 +241,9 @@ class AbstractDSPIN(ABC):
                           method: str = 'auto',
                           directed: bool = False,
                           params: dict = None,
-                          example_list: List[str] = None,
+                          sample_list: List[str] = None,
+                          prior_network: np.ndarray = None,
+                          perturb_matrix: np.ndarray = None,
                           run_with_matlab: bool = False) -> None:
         """
         Perform network inference using a specified method and parameters.
@@ -256,8 +258,12 @@ class AbstractDSPIN(ABC):
             Whether to infer a directed network. Default is False.
         params : dict, optional
             Additional parameters for network inference. Default is None.
-        example_list : List[str], optional
-            List of example sample identifiers. Default is None.
+        sample_list : List[str], optional
+            List of ordered sample identifiers. Default is None.
+        prior_network : np.ndarray, optional
+            Binary matrix of preferred network connectivity from prior knowledge. Default is None.
+        perturb_matrix : np.ndarray, optional
+            Matrix of putative relative responses to control samples. Default is None.
         run_with_matlab : bool, optional
             If True, prepares data for MATLAB execution instead of running inference in Python. Default is False.
         """
@@ -275,8 +281,8 @@ class AbstractDSPIN(ABC):
         if method == 'auto':           
             samp_list = np.unique(self.adata.obs[sample_id_key])
             num_sample = len(samp_list)
-            if example_list is not None:
-                num_sample = len(example_list)
+            if sample_list is not None:
+                num_sample = len(sample_list)
             if num_sample > 30:
                 method = 'pseudo_likelihood'
             else:
@@ -296,9 +302,18 @@ class AbstractDSPIN(ABC):
         else:
             self.raw_data_corr(sample_id_key)
 
-        self.example_list = example_list
+        self.sample_list_input = sample_list
 
         train_dat = self.default_params(method)
+
+        if prior_network is not None:
+            train_dat['j_prior_mask'] = prior_network
+            train_dat['lambda_l1_j_prior_mask'] = 0.01
+            
+        if perturb_matrix is not None:
+            train_dat['perturb_matrix'] = perturb_matrix
+            train_dat['lambda_l2_h_rela_prior'] = 0.5
+
         train_dat['directed'] = directed
         if params is not None:
             train_dat.update(params)
@@ -392,7 +407,6 @@ class GeneDSPIN(AbstractDSPIN):
 
         if gene_skew.mean() > 2:
             default_clip = 95
-            print("Input gene expression seem to be heavy-tailed. Using 95 percentile for clipping before discretization.")
         else:
             default_clip = 100
 
@@ -400,13 +414,17 @@ class GeneDSPIN(AbstractDSPIN):
                    'clip_percentile': default_clip,
                    'num_init': 10}
         dparams.update(discretize_params)
-        
+
         if dparams['use_default_discretize']:
+
+            if dparams['clip_percentile'] < 100:
+                print(f"Input gene expression seem to be heavy-tailed. Using {dparams['clip_percentile']} percentile for clipping before discretization.")
+
             self.discretize(clip_percentile=dparams['clip_percentile'], 
                             num_init=dparams['num_init'])
 
     def program_regulator_discovery(self, 
-                                    program_representation_raw: np.ndarray, 
+                                    program_representation: np.ndarray, 
                                     sample_id_key: str = 'sample_id',
                                     params: dict = None):
         """
@@ -414,7 +432,7 @@ class GeneDSPIN(AbstractDSPIN):
 
         Parameters
         ----------
-        program_representation_raw : np.ndarray
+        program_representation : np.ndarray
             The gene program representation.
         sample_id_key : str, optional
             Column name in `adata.obs` specifying sample identifiers. Default is 'sample_id'.
@@ -422,7 +440,7 @@ class GeneDSPIN(AbstractDSPIN):
             Additional parameters for regression. Default is None.
         """
 
-        program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation_raw)
+        program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation)
 
         gene_states, _ = sample_states(self.adata.obs[sample_id_key], self._onmf_rep_tri)
 
@@ -430,7 +448,9 @@ class GeneDSPIN(AbstractDSPIN):
             'num_epoch': 500,
             'stepsz': 0.01,
             'lambda_l1_interaction': 0.01,
-            'rec_gap': 10
+            'rec_gap': 10,
+            'backtrack_gap': 40,
+            'backtrack_tol': 5
         }
 
         if params is not None:
@@ -664,10 +684,10 @@ class ProgramDSPIN(AbstractDSPIN):
         self.prior_programs_ind = prior_program_ind
 
         num_onmf_components = onmf_parameters['num_onmf_components']
+
+        os.makedirs(self.save_path + 'onmf/', exist_ok=True)
         
         if mode == 'compute_summary' or mode == 'compute_only':
-
-            os.makedirs(self.save_path + 'onmf/', exist_ok=True)
 
             cur_gene_matrix = adata.X[:, prior_program_mask]
             cluster_label_raw = adata.obs[cluster_key].values

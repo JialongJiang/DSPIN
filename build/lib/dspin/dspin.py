@@ -392,7 +392,6 @@ class GeneDSPIN(AbstractDSPIN):
 
         if gene_skew.mean() > 2:
             default_clip = 95
-            print("Input gene expression seem to be heavy-tailed. Using 95 percentile for clipping before discretization.")
         else:
             default_clip = 100
 
@@ -400,13 +399,17 @@ class GeneDSPIN(AbstractDSPIN):
                    'clip_percentile': default_clip,
                    'num_init': 10}
         dparams.update(discretize_params)
-        
+
         if dparams['use_default_discretize']:
+
+            if dparams['clip_percentile'] < 100:
+                print(f"Input gene expression seem to be heavy-tailed. Using {dparams['clip_percentile']} percentile for clipping before discretization.")
+
             self.discretize(clip_percentile=dparams['clip_percentile'], 
                             num_init=dparams['num_init'])
 
     def program_regulator_discovery(self, 
-                                    program_representation_raw: np.ndarray, 
+                                    program_representation: np.ndarray, 
                                     sample_id_key: str = 'sample_id',
                                     params: dict = None):
         """
@@ -414,7 +417,7 @@ class GeneDSPIN(AbstractDSPIN):
 
         Parameters
         ----------
-        program_representation_raw : np.ndarray
+        program_representation : np.ndarray
             The gene program representation.
         sample_id_key : str, optional
             Column name in `adata.obs` specifying sample identifiers. Default is 'sample_id'.
@@ -422,7 +425,7 @@ class GeneDSPIN(AbstractDSPIN):
             Additional parameters for regression. Default is None.
         """
 
-        program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation_raw)
+        program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation)
 
         gene_states, _ = sample_states(self.adata.obs[sample_id_key], self._onmf_rep_tri)
 
@@ -430,7 +433,9 @@ class GeneDSPIN(AbstractDSPIN):
             'num_epoch': 500,
             'stepsz': 0.01,
             'lambda_l1_interaction': 0.01,
-            'rec_gap': 10
+            'rec_gap': 10,
+            'backtrack_gap': 40,
+            'backtrack_tol': 5
         }
 
         if params is not None:
@@ -664,10 +669,10 @@ class ProgramDSPIN(AbstractDSPIN):
         self.prior_programs_ind = prior_program_ind
 
         num_onmf_components = onmf_parameters['num_onmf_components']
+
+        os.makedirs(self.save_path + 'onmf/', exist_ok=True)
         
         if mode == 'compute_summary' or mode == 'compute_only':
-
-            os.makedirs(self.save_path + 'onmf/', exist_ok=True)
 
             cur_gene_matrix = adata.X[:, prior_program_mask]
             cluster_label_raw = adata.obs[cluster_key].values
