@@ -18,6 +18,8 @@ The MATLAB code can be downloaded from the folder "DSPIN_matlab", and directly e
 
 ## Demos
 
+A tutorial intended for an invited book chapter is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2025.07.28.667326).
+
 Two demos of D-SPIN are available on Google Colab. 
 
 The first demo reconstructs the regulatory network of simulated hematopoietic stem cell (HSC) differentiation network with perturbations using the BEELINE framework (Pratapa, Aditya, et al. Nature methods, 2020). 
@@ -170,6 +172,8 @@ model_gene.program_regulator_discovery(
 
 1. Jiang, Jialong, et al. "D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response." bioRxiv (2023).
 
-2. Pratapa, Aditya, et al. "Benchmarking algorithms for gene regulatory network inference from single-cell transcriptomic data." Nature methods 17.2 (2020): 147-154.
+2. Jiang, Jialong, and Thomson, Matt. "A guide to D-SPIN: constructing regulatory network models from single-cell RNA-seq perturbation data." bioRxiv (2025).
 
-3. Cui, Ang, et al. "Dictionary of immune responses to cytokines at single-cell resolution." Nature 625.7994 (2024): 377-384.
+3. Pratapa, Aditya, et al. "Benchmarking algorithms for gene regulatory network inference from single-cell transcriptomic data." Nature methods 17.2 (2020): 147-154.
+
+4. Cui, Ang, et al. "Dictionary of immune responses to cytokines at single-cell resolution." Nature 625.7994 (2024): 377-384.
