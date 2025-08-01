@@ -279,6 +279,8 @@ def compute_onmf(seed: int,
     """
     # Generate a random seed
     np.random.seed(seed)
+
+    tqdm._instances.clear()
     # Factorized Matrices
     H, W = onmf(gene_matrix, num_spin, max_iter)
 
@@ -996,10 +998,13 @@ def apply_regularization(rec_jgrad: np.ndarray,
     
     if 'lambda_l2_j_prior_mask' in train_dat:
         rec_jgrad += train_dat['lambda_l2_j_prior_mask'] * (cur_j * (train_dat['j_prior_mask'] == 0))[:, :, np.newaxis]
+
+    if 'lambda_l1_j_prior_mask' in train_dat:
+        rec_jgrad += train_dat['lambda_l1_j_prior_mask'] * ((cur_j * (train_dat['j_prior_mask'] == 0))[:, :, np.newaxis] / 1e-3).clip(-1, 1)
     
     if print_regu:  
         print('Regularization parameters')
-        all_regu_list = ['lambda_l1_j', 'lambda_l1_h', 'lambda_l2_j', 'lambda_l2_h', 'lambda_l2_j_prior', 'lambda_l2_j_prior_mask', 'lambda_l2_h_rela_prior', 'lambda_l1_h_rela', 'lambda_l2_h_rela']
+        all_regu_list = ['lambda_l1_j', 'lambda_l1_h', 'lambda_l2_j', 'lambda_l2_h', 'lambda_l2_j_prior', 'lambda_l2_j_prior_mask', 'lambda_l2_h_rela_prior', 'lambda_l1_h_rela', 'lambda_l2_h_rela', 'lambda_l1_j_prior_mask']
         all_values = [train_dat.get(key, 0) for key in all_regu_list]
         for key, value in zip(all_regu_list, all_values):
             if value > 0:

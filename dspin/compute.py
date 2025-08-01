@@ -279,6 +279,8 @@ def compute_onmf(seed: int,
     """
     # Generate a random seed
     np.random.seed(seed)
+
+    tqdm._instances.clear()
     # Factorized Matrices
     H, W = onmf(gene_matrix, num_spin, max_iter)
 

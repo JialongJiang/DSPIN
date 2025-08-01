@@ -35,6 +35,9 @@ import warnings
 import itertools
 from typing import List, Dict, Optional, Tuple, Union
 from scipy.stats import skew
+import leidenalg as la
+import igraph as ig
+import matplotlib as mpl
 
 
 class AbstractDSPIN(ABC):
@@ -107,6 +110,18 @@ class AbstractDSPIN(ABC):
     def sample_list(self):
         return self._samp_list
 
+    @property
+    def modules(self):
+        return self._modules
+    
+    @property
+    def name_list(self):
+        return self._name_list
+
+    @property
+    def name_list_short(self):
+        return self._name_list_short
+
     @program_representation_raw.setter
     def program_representation_raw(self, value):
         self._onmf_rep_ori = value
@@ -130,6 +145,18 @@ class AbstractDSPIN(ABC):
     @sample_list.setter
     def sample_list(self, value):
         self._samp_list = value
+
+    @modules.setter
+    def modules(self, value):
+        self._modules = value
+
+    @name_list.setter
+    def name_list(self, value):
+        self._name_list = value
+
+    @name_list_short.setter
+    def name_list_short(self, value):
+        self._name_list_short = value
 
     def discretize(self, 
                    clip_percentile: float = 100,
@@ -201,11 +228,11 @@ class AbstractDSPIN(ABC):
         num_spin = self.num_spin
         raw_data = self._raw_data
 
-        if self.example_list is not None:
-            example_list_ind = [list(self._samp_list).index(samp)
-                                for samp in self.example_list]
-            self._samp_list = self._samp_list[example_list_ind]
-            raw_data = raw_data[example_list_ind]
+        if self.sample_list_ordered is not None:
+            sample_list_ordered_ind = [list(self._samp_list).index(samp)
+                                for samp in self.sample_list_ordered]
+            self._samp_list = self._samp_list[sample_list_ordered_ind]
+            raw_data = raw_data[sample_list_ordered_ind]
             self._raw_data = raw_data
             print("Using a subset of {} samples for network inference.".format(len(self._samp_list)))
 
@@ -241,7 +268,9 @@ class AbstractDSPIN(ABC):
                           method: str = 'auto',
                           directed: bool = False,
                           params: dict = None,
-                          example_list: List[str] = None,
+                          sample_list_ordered: List[str] = None,
+                          prior_network: np.ndarray = None,
+                          perturb_matrix: np.ndarray = None,
                           run_with_matlab: bool = False) -> None:
         """
         Perform network inference using a specified method and parameters.
@@ -256,8 +285,12 @@ class AbstractDSPIN(ABC):
             Whether to infer a directed network. Default is False.
         params : dict, optional
             Additional parameters for network inference. Default is None.
-        example_list : List[str], optional
-            List of example sample identifiers. Default is None.
+        sample_list_ordered : List[str], optional
+            List of ordered sample identifiers. Default is None.
+        prior_network : np.ndarray, optional
+            Binary matrix of preferred network connectivity from prior knowledge. Default is None.
+        perturb_matrix : np.ndarray, optional
+            Matrix of putative relative responses to control samples. Default is None.
         run_with_matlab : bool, optional
             If True, prepares data for MATLAB execution instead of running inference in Python. Default is False.
         """
@@ -275,8 +308,8 @@ class AbstractDSPIN(ABC):
         if method == 'auto':           
             samp_list = np.unique(self.adata.obs[sample_id_key])
             num_sample = len(samp_list)
-            if example_list is not None:
-                num_sample = len(example_list)
+            if sample_list_ordered is not None:
+                num_sample = len(sample_list_ordered)
             if num_sample > 30:
                 method = 'pseudo_likelihood'
             else:
@@ -296,9 +329,18 @@ class AbstractDSPIN(ABC):
         else:
             self.raw_data_corr(sample_id_key)
 
-        self.example_list = example_list
+        self.sample_list_ordered = sample_list_ordered
 
         train_dat = self.default_params(method)
+
+        if prior_network is not None:
+            train_dat['j_prior_mask'] = prior_network
+            train_dat['lambda_l1_j_prior_mask'] = 0.01
+
+        if perturb_matrix is not None:
+            train_dat['perturb_matrix'] = perturb_matrix
+            train_dat['lambda_l2_h_rela_prior'] = 0.5
+
         train_dat['directed'] = directed
         if params is not None:
             train_dat.update(params)
@@ -346,6 +388,62 @@ class AbstractDSPIN(ABC):
         batch_index = np.array([sample_to_batch[sample] for sample in sample_list])
 
         self._relative_responses = compute_relative_responses(self.responses, if_control, batch_index)
+
+    def compute_modules(self, 
+                        resolution: float = 1.0,
+                        seed: int = 0,
+                        thres: float = 0) -> List[List[int]]:
+        """
+        Compute network modules using Leiden community detection.
+        
+        Parameters
+        ----------
+        resolution : float, optional
+            Resolution parameter for Leiden community detection. Higher values lead to more modules. Default is 1.0.
+        seed : int, optional
+            Random seed for Leiden community detection. Default is 0.
+        thres : float, optional
+            Threshold for filtering weak connections. Default is 0.
+            
+        Returns
+        -------
+        List[List[int]]
+            List of modules, where each module is a list of node indices.
+        """
+        if not hasattr(self, '_network') or self._network is None:
+            raise ValueError("Network must be inferred before computing modules. Run network_inference() first.")
+            
+        j_mat = self._network.copy()
+        np.fill_diagonal(j_mat, 0)
+        
+        # Filter weak connections
+        j_filt = j_mat.copy()
+        j_filt[np.abs(j_mat) < thres] = 0
+        np.fill_diagonal(j_filt, 0)
+        
+        # Create networkx graph
+        G = nx.from_numpy_array(j_filt)
+        G = ig.Graph.from_networkx(G)
+        
+        # Separate positive and negative edges
+        G_pos = G.subgraph_edges(G.es.select(weight_gt=0), delete_vertices=False)
+        G_neg = G.subgraph_edges(G.es.select(weight_lt=0), delete_vertices=False)
+        G_neg.es['weight'] = [-w for w in G_neg.es['weight']]
+        
+        # Apply Leiden community detection
+        part_pos = la.RBConfigurationVertexPartition(G_pos, weights='weight', resolution_parameter=resolution)
+        part_neg = la.RBConfigurationVertexPartition(G_neg, weights='weight', resolution_parameter=resolution)
+        
+        optimiser = la.Optimiser()
+        optimiser.set_rng_seed(seed)
+        
+        diff = optimiser.optimise_partition_multiplex([part_pos, part_neg], layer_weights=[1, -1])
+        
+        # Extract modules
+        net_class = list(part_pos)
+        self._modules = net_class
+        
+        print(f'Identified {len(net_class)} modules with sizes {np.array([len(cur_list) for cur_list in net_class])}')
 
 
 class GeneDSPIN(AbstractDSPIN):
@@ -399,6 +497,9 @@ class GeneDSPIN(AbstractDSPIN):
                    'clip_percentile': default_clip,
                    'num_init': 10}
         dparams.update(discretize_params)
+
+        self.name_list = self.adata.var_names.tolist()
+        self.name_list_short = self.adata.var_names.tolist()
 
         if dparams['use_default_discretize']:
 
@@ -714,10 +815,11 @@ class ProgramDSPIN(AbstractDSPIN):
             # Save the gene programs to a CSV file
             file_path = onmf_to_csv(onmf_summary.components_, adata.var_names, self.save_path + f'gene_programs_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}.csv', thres=0.01)
             print('Gene program information saved to {}'.format(file_path))
-            file_wpath = onmf_to_csv(onmf_summary.components_, adata.var_names, self.save_path + f'gene_programs_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}_weights.csv', thres=0.01, if_write_weights=True)
-            # print('Gene programs saved to {}'.format(file_path))
             self.gene_program_csv = file_path
 
+            file_wpath = onmf_to_csv(onmf_summary.components_, adata.var_names, self.save_path + f'gene_programs_total_{num_spin}_onmf_{num_onmf_components}_prior_{len(prior_program_ind)}_weights.csv', thres=0.01, if_write_weights=True)
+            # print('Gene programs saved to {}'.format(file_path))
+            
             gene_matrix = self.adata.X
             if issparse(gene_matrix):
                 gene_matrix = np.asarray(gene_matrix.toarray()).astype(np.float64)
@@ -731,6 +833,20 @@ class ProgramDSPIN(AbstractDSPIN):
 
             self.discretize(clip_percentile=dparams['clip_percentile'],
                             num_init=dparams['num_init'])
+
+        num_display_gene = 5
+        gene_pd = pd.read_csv(self.gene_program_csv, index_col=None)
+        
+        top_gene_list = [gene_pd.iloc[:, ii].tolist()[:num_display_gene] for ii in range(num_spin)]
+        # remove nan
+        top_gene_list_filtered = []
+        for sub_list in top_gene_list:
+            sub_list_filtered = [gene for gene in sub_list if str(gene) != 'nan']
+            top_gene_list_filtered.append(sub_list_filtered)
+
+        program_names = [f'P{ii}-' + ','.join(top_gene_list_filtered[ii]) for ii in range(num_spin)]
+        self.name_list = program_names
+        self.name_list_short = [name.split('-')[0] for name in program_names]
 
 
 class DSPIN(object):

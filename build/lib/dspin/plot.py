@@ -9,16 +9,15 @@ import matplotlib.patheffects as patheffects
 from sklearn.cluster import KMeans
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import os
-import sys
 import csv
 import scanpy as sc
 import igraph as ig
 import leidenalg as la
 import networkx as nx
 from scipy import optimize
-from scipy.spatial.distance import pdist
+from scipy.spatial.distance import pdist, squareform
+import matplotlib as mpl
+from typing import List, Dict, Optional, Tuple
 
 
 def onmf_to_csv(features, gene_name, file_path, thres=0.01, if_write_weights=False):
@@ -557,3 +556,259 @@ def plot_final(
     ax.set_title(title, fontsize=node_fontsize * 1.5, y = 1.05)
 
 
+def plot_module_heatmap(j_mat: np.ndarray, 
+                       modules: List[List[int]], 
+                       spin_name_list: Optional[List[str]] = None,
+                       fig_folder: Optional[str] = None) -> None:
+    """
+    Plot a heatmap of the network adjacency matrix with modules highlighted.
+    
+    Parameters
+    ----------
+    j_mat : np.ndarray
+        The network adjacency matrix.
+    modules : List[List[int]]
+        List of modules, where each module is a list of node indices.
+    spin_name_list : List[str], optional
+        List of names for the spins/nodes. If None, will use generic names.
+    fig_folder : str, optional
+        Folder path to save the figure. If None, will not save the figure.
+    """
+    num_spin = j_mat.shape[0]
+    j_mat = j_mat.copy()
+    np.fill_diagonal(j_mat, 0)
+    
+    # Create spin order based on modules
+    spin_order = [spin for cur_list in modules for spin in cur_list]
+    net_class_len = [len(cur_list) for cur_list in modules]
+    
+    # Create custom colormap
+    cmap_hvec = mpl.colors.LinearSegmentedColormap.from_list("", ['#E84B23', '#FFFFFF', '#3285CC'])
+    
+    # Plot heatmap
+    sc.set_figure_params(figsize=[0.22 * num_spin + 0.5, 0.22 * num_spin])
+    plt.imshow(j_mat[:, spin_order][spin_order, :], cmap=cmap_hvec, vmin=-1, vmax=1)
+    
+    # Add module boundaries
+    for ii in range(len(net_class_len)):
+        plt.axhline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
+        plt.axvline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
+    
+    # Set labels
+    if spin_name_list is not None:
+        plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=10)
+        plt.yticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], fontsize=10)
+    else:
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=10)
+        plt.yticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], fontsize=10)
+        
+    plt.colorbar(fraction=0.03)
+    plt.grid()
+    plt.title(f'Network on {num_spin} programs', fontsize=12)
+    
+    # Save figure if folder is provided
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'module_heatmap.png', dpi=300, bbox_inches='tight')
+    
+    plt.show()
+
+
+
+def layout_loss_fun(xx, ori_pos, network):
+
+    stength_module = 12
+    strength_repulsion = 12
+    strength_spring = 1
+
+    spring_length = 2
+    spring_weight = np.abs(network)
+
+    module_length = 1
+
+    xx = xx.reshape(- 1, 2)
+    module_dist = np.clip(np.sqrt(((xx - ori_pos) ** 2).sum(axis=1)) - module_length, 0, None)
+    module_attract = np.sum(module_dist ** 2)
+    repulse = np.sum(1 / pdist(xx))
+
+    pairwise_distance = squareform(pdist(xx))
+    clip_dist = np.clip(pairwise_distance - spring_length, 0, None)
+    spring_energy = np.sum(clip_dist ** 2 * spring_weight)
+
+    return stength_module * module_attract + strength_repulsion * repulse + strength_spring * spring_energy
+
+def compute_module_angle(module_size, gap_size):
+
+    module_plots_size = np.sqrt(module_size)
+
+    angle_list = []
+    cur_angle = 0
+
+    for ii in range(len(module_plots_size)):
+        angle_list.append(cur_angle)
+        cur_angle += module_plots_size[ii] + gap_size
+
+    angle_list = np.array(angle_list)
+    angle_list /= (cur_angle / (2 * np.pi))
+
+    return angle_list
+
+def compute_pos_from_module(network, net_class, circle_size=None, module_angle=None, gap_size=0.5):
+
+    module_size = np.array([len(cur_list) for cur_list in net_class])
+    num_spin = np.sum(module_size)
+
+    if module_angle is None:
+        module_angle = compute_module_angle(module_size, gap_size)
+
+    if circle_size is None:
+        circle_size = num_spin ** 0.3
+
+    module_center = circle_size * np.array([np.cos(module_angle), np.sin(module_angle)]).T
+
+    pos_module = np.zeros((num_spin, 2))
+
+    for ii in range(len(module_size)):
+        cur_list = net_class[ii]
+        pos_module[cur_list, :] = module_center[ii, :]
+
+    pos_module += np.random.normal(0, 0.05, pos_module.shape)
+
+    ori_pos = pos_module.copy()
+
+    opt_res = optimize.minimize(lambda xx : layout_loss_fun(xx, ori_pos, network), pos_module.flatten())
+    pos_raw = opt_res.x.reshape(- 1, 2)
+
+    pos = {ii: pos_raw[ii] for ii in range(num_spin)}
+
+    return pos
+
+
+def compute_network_positions(j_mat: np.ndarray,
+                             modules: List[List[int]])-> Dict[int, Tuple[float, float]]:
+    """
+    Compute positions for network nodes based on modules.
+    
+    Parameters
+    ----------
+    j_mat : np.ndarray
+        The network adjacency matrix.
+    modules : List[List[int]]
+        List of modules, where each module is a list of node indices.
+    
+    Returns
+    -------
+    Dict[int, Tuple[float, float]]
+        Dictionary mapping node indices to (x, y) positions.
+    """
+    
+    pos = compute_pos_from_module(j_mat, modules)
+    
+    return pos
+
+
+def plot_network_diagram(j_mat: np.ndarray,
+                        modules: List[List[int]],
+                        pos: Optional[Dict[int, Tuple[float, float]]] = None, 
+                        spin_name_list_short: Optional[List[str]] = None,
+                        spin_name_list: Optional[List[str]] = None,
+                        fig_folder: Optional[str] = None,
+                        num_spin: Optional[int] = None) -> None:
+    """
+    Plot the network diagram with modules highlighted.
+    
+    Parameters
+    ----------
+    j_mat : np.ndarray
+        The network adjacency matrix.
+    modules : List[List[int]]
+        List of modules, where each module is a list of node indices.
+    pos : Dict[int, Tuple[float, float]], optional
+        Dictionary mapping node indices to (x, y) positions. If None, positions will be computed automatically.
+    spin_name_list_short : List[str], optional
+        Short names for the spins/nodes (used for labels). If None, will use generic names.
+    spin_name_list : List[str], optional
+        Full names for the spins/nodes (used for tooltips). If None, will use generic names.
+    fig_folder : str, optional
+        Folder path to save the figure. If None, will not save the figure.
+    num_spin : int, optional
+        Number of spins. If None, will be inferred from j_mat shape.
+    """
+    if num_spin is None:
+        num_spin = j_mat.shape[0]
+    
+    # Filter network for visualization
+    thres = 0.2
+    j_filt = j_mat.copy()
+    j_filt[np.abs(j_mat) < thres] = 0
+    np.fill_diagonal(j_filt, 0)
+    
+    # Create networkx graph
+    G = nx.from_numpy_array(j_filt)
+    
+    # Compute positions
+    if pos is None:
+        pos = compute_network_positions(j_mat, modules)
+    
+    # Create labels
+    if spin_name_list_short is not None:
+        label = {ii: spin_name_list_short[ii] for ii in range(num_spin)}
+    else:
+        label = {ii: f'P{ii}' for ii in range(num_spin)}
+    
+    # Plot network
+    fig_size = 3 * num_spin ** 0.3
+    sc.set_figure_params(figsize=[fig_size, fig_size])
+    fig, ax = plt.subplots()
+    
+    # Draw edges
+    eposi = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] > 0]
+    wposi = np.array([d['weight'] for (u, v, d) in G.edges(data=True) if d['weight'] > 0])
+    
+    enega = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] < 0]
+    wnega = np.array([d['weight'] for (u, v, d) in G.edges(data=True) if d['weight'] < 0])
+    
+    # Draw positive edges
+    if len(eposi) > 0:
+        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=eposi, width=3 * wposi,
+                               edge_color='#3285CC', alpha=0.7)
+    
+    # Draw negative edges
+    if len(enega) > 0:
+        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=enega, width=3 * (-wnega),
+                               edge_color='#E84B23', alpha=0.7)
+    
+    # Draw nodes
+    node_colors = ['#f0dab1'] * num_spin
+    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=300, node_color=node_colors, 
+                          edgecolors='black', linewidths=1)
+    
+    # Draw labels
+    for spin in range(num_spin):
+        plt.text(pos[spin][0], pos[spin][1], label[spin], fontsize=10, 
+                path_effects=[patheffects.withStroke(linewidth=3, foreground='w')], 
+                ha='center', va='center')
+    
+    ax.set_aspect('equal')
+    ax.set_axis_off()
+    plt.title('Network Diagram with Modules', fontsize=12)
+
+    # Print the spin_name_list in a column to the right of the figure
+    if spin_name_list is not None:
+        # Place the text to the right of the plot
+        # Get axis limits to determine placement
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        # Place the column at a little to the right of the rightmost node
+        x_text = xlim[1] + 0.02 * (xlim[1] - xlim[0])
+        y_start = ylim[1] - 0.05 * (ylim[1] - ylim[0])
+        line_gap = fig_size / 20
+        for idx, name in enumerate(spin_name_list):
+            ax.text(x_text, y_start - idx * line_gap, name, fontsize=10, va='top', ha='left')
+        # Optionally, expand the xlim to make space for the text
+        ax.set_xlim(xlim[0], x_text + 1.5)
+    
+    # Save figure if folder is provided
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'network_diagram.png', dpi=300, bbox_inches='tight')
+    
+    plt.show() 
