@@ -16,6 +16,7 @@ import leidenalg as la
 import networkx as nx
 from scipy import optimize
 from scipy.spatial.distance import pdist, squareform
+from scipy.cluster.hierarchy import linkage, leaves_list
 import matplotlib as mpl
 from typing import List, Dict, Optional, Tuple
 
@@ -146,6 +147,7 @@ def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
 
     return program_umap_pos
 
+
 def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, subsample=True):
     """
     Plot gene programs on the UMAP plot.
@@ -265,6 +267,7 @@ def visualize_program_expression(onmf_summary, spin_name, gene_matrix, onmf_rep_
         plt.savefig(fig_folder + 'gene_program_decomposition.png', bbox_inches='tight')
         return fig_folder + 'gene_program_decomposition.png'
 
+
 def format_label(label):
     """
     Format the label string by inserting a newline character after every second word.
@@ -286,6 +289,7 @@ def format_label(label):
 
     return '_'.join(parts)
 
+
 def temporary_spin_name(csv_file, num_gene: int = 4):
     """
     Create temporary spin names based on the CSV file content.
@@ -304,260 +308,9 @@ def temporary_spin_name(csv_file, num_gene: int = 4):
     spin_names_formatted = [format_label(name) for name in spin_names]
     return spin_names_formatted
 
-def spin_order_in_cluster(j_mat, resolution_parameter: float = 2):
-    """ Determine the order of spins in the cluster.
 
-    Args:
-    - j_mat: The adjacency matrix representing connections between spins.
-
-    Returns:
-    - spin_order: The order of spins determined by the function.
-    - pert_pos: The positions perturbed for visualization.
-    """
-    np.fill_diagonal(j_mat, 0)
-
-    thres = 0
-    j_filt = j_mat.copy()
-    j_filt[np.abs(j_mat) < thres] = 0
-    np.fill_diagonal(j_filt, 0)
-    G = nx.from_numpy_array(j_filt)
-
-    G = ig.Graph.from_networkx(G)
-    G_pos = G.subgraph_edges(
-        G.es.select(
-            weight_gt=0),
-        delete_vertices=False)
-    G_neg = G.subgraph_edges(
-        G.es.select(
-            weight_lt=0),
-        delete_vertices=False)
-    G_neg.es['weight'] = [-w for w in G_neg.es['weight']]
-
-    part_pos = la.RBConfigurationVertexPartition(
-        G_pos, weights='weight', resolution_parameter=resolution_parameter)
-    part_neg = la.RBConfigurationVertexPartition(
-        G_neg, weights='weight', resolution_parameter=resolution_parameter)
-    optimiser = la.Optimiser()
-    diff = optimiser.optimise_partition_multiplex(
-        [part_pos, part_neg], layer_weights=[1, -1])
-
-    net_class = list(part_pos)
-    spin_order = [spin for cur_list in net_class for spin in cur_list]
-    net_class_len = [len(cur_list) for cur_list in net_class]
-
-    start_angle = 0 * np.pi
-    end_angle = 2 * np.pi
-    gap_size = 2
-
-    angle_list_raw = np.linspace(start_angle, end_angle, np.sum(
-        net_class_len) + gap_size * len(net_class_len) + 1)[: - 1]
-    angle_list = []
-    size_group_cum = np.cumsum(net_class_len)
-    size_group_cum = np.insert(size_group_cum, 0, 0)
-    # angle_list = np.linspace(start_angle, end_angle, len(leiden_list) + 1)
-    for ii in range(len(net_class_len)):
-        angle_list.extend(
-            angle_list_raw[size_group_cum[ii] + gap_size * ii: size_group_cum[ii + 1] + gap_size * ii])
-
-    pert_dist = 3
-
-    pert_pos = np.array(
-        [- pert_dist * np.cos(angle_list), pert_dist * np.sin(angle_list)]).T
-
-    return spin_order, pert_pos
-
-def plot_network(
-        G,
-        j_mat,
-        ax,
-        pos: None,
-        nodesz=1,
-        linewz=1,
-        node_color='k'):
-    """ 
-    Plot the network.
-
-    Args:
-    - G: The networkx graph object.
-    - j_mat: The adjacency matrix representing connections between spins.
-    - ax: The axis object to plot the network.
-    - nodesz: The size of nodes in the network.
-    - linewz: The width of edges in the network.
-    - node_color: The color of nodes in the network.
-    - pos: The positions of nodes in the network.
-    """
-
-    self_loops = [(u, v) for u, v in G.edges() if u == v]
-    G.remove_edges_from(self_loops)
-
-    eposi = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] > 0]
-    wposi = np.array([d['weight']
-                        for (u, v, d) in G.edges(data=True) if d['weight'] > 0])
-
-    enega = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] < 0]
-    wnega = np.array([d['weight']
-                        for (u, v, d) in G.edges(data=True) if d['weight'] < 0])
-
-    col1 = '#f0dab1'
-
-    nx.draw_networkx_nodes(
-        G,
-        pos,
-        ax=ax,
-        node_size=61.8 *
-        nodesz,
-        node_color=node_color,
-        edgecolors='k')
-
-    def sig_fun(xx): return (1 / (1 + np.exp(- 5 * (xx + cc))))
-    cc = np.max(np.abs(j_mat)) / 10
-
-    # edges
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        ax=ax,
-        edgelist=eposi,
-        width=linewz * wposi,
-        edge_color='#3285CC',
-        alpha=sig_fun(wposi))
-
-    nx.draw_networkx_edges(G,
-                            pos,
-                            ax=ax,
-                            edgelist=enega,
-                            width=- linewz * wnega,
-                            edge_color='#E84B23',
-                            alpha=sig_fun(- wnega))
-
-    margin = 0.2
-    plt.margins(x=0.1, y=0.1)
-
-    ax.set_axis_off()
-    ax.set_aspect('equal')
-    return ax
-
-def adjust_label_position(pos, offset=0.1):
-    """ 
-    Adjust the label positions radially outward from the center.
-
-    Args:
-    - pos: The original positions of the labels.
-    - offset: The radial distance by which to adjust the label positions.
-
-    Returns:
-    - adjusted_pos: The adjusted positions of the labels.
-    """
-    adjusted_pos = {}
-    for node, coordinates in enumerate(pos):
-        theta = np.arctan2(coordinates[1], coordinates[0])
-        radius = np.sqrt(coordinates[0]**2 + coordinates[1]**2)
-        adjusted_pos[node] = (
-            coordinates[0] + np.cos(theta) * offset,
-            coordinates[1] + np.sin(theta) * offset)
-    return adjusted_pos
-
-def plot_final(
-        cur_j,
-        gene_program_name,
-        cluster:bool = True,
-        title: str = "Gene Regulatory Network Reconstructed by D-SPIN",
-        adj_matrix_threshold: float = 0.4,
-        resolution_parameter: float = 2,
-        nodesz: float = 3,
-        linewz: float = 2,
-        node_color: str = 'k',
-        figsize=[20, 20],
-        pos=None,
-        spin_order=None,
-        node_fontsize=None):
-    """
-    Plot the final gene regulatory network.
-
-    Args:
-    - gene_program_name: The names of gene programs.
-    - cur_j: The adjacency matrix representing connections between gene programs.
-    - nodesz: The size of nodes in the network.
-    - linewz: The width of edges in the network.
-    - node_color: The color of nodes in the network.
-    - pos: The positions of nodes in the network.
-    """
-    sc.set_figure_params(figsize=figsize)
-
-    num_spin = cur_j.shape[0]
-    
-    # Setting default values for parameters of node size and line width.
-    if not nodesz:
-        nodesz = np.sqrt(100 / num_spin)
-    if not linewz:
-        linewz = np.sqrt(100 / num_spin)
-    if node_fontsize is None:
-        node_fontsize = figsize[0] * 20/ num_spin
-
-
-    fig, grid = sc.pl._tools._panel_grid(0.2, 0.2, ncols=2, num_panels=2)
-
-    # Filtering the adjacency matrix.
-    cur_j_filt = cur_j.copy()
-    cur_j_filt[np.abs(cur_j_filt) < np.percentile(np.abs(cur_j_filt), adj_matrix_threshold * 100)] = 0
-
-    if spin_order is None:
-        # Calculating spin orders and perturbed positions for plotting.
-        spin_order, pert_pos = spin_order_in_cluster(cur_j, resolution_parameter)
-
-    # Creating a graph from the filtered adjacency matrix and ordering spins.
-    G = nx.convert_matrix.from_numpy_array(cur_j_filt[spin_order, :][:, spin_order])
-
-    # Initializations and adjustments for plotting.
-    if not cluster:
-        pos = nx.circular_layout(G)
-    else:
-        pos = pert_pos
-    node_color = ['#f0dab1'] * num_spin
-    node_label = np.array(gene_program_name)[spin_order]
-    # node_label = np.array([format_label(label) for label in gene_list])
-
-
-    ax = plt.subplot(grid[1])
-    ax = plot_network(
-        G,
-        cur_j_filt,
-        ax,
-        nodesz=nodesz,
-        linewz=linewz,
-        node_color=node_color,
-        pos=pos)
-
-    # Adding labels with path effects to nodes in the network.
-    path_effect = [patheffects.withStroke(linewidth=3, foreground='w')]
-    
-    if cluster:
-        adjusted_positions = adjust_label_position(pos, 0.5)
-    else:
-        adjusted_positions = pos
-    for ii in range(num_spin):
-        x, y = adjusted_positions[ii]
-        text = plt.text(
-            x,
-            y,
-            node_label[ii],
-            fontsize= node_fontsize,
-            color='k',
-            ha='center',
-            va='center',
-            rotation=np.arctan(
-                pos[ii][1] /
-                pos[ii][0]) /
-            np.pi *
-            180)
-        text.set_path_effects(path_effect)
-    if not title:
-        title = 'Gene Regulatory Network Reconstructed by D-SPIN'
-    ax.set_title(title, fontsize=node_fontsize * 1.5, y = 1.05)
-
-
-def plot_module_heatmap(j_mat: np.ndarray, 
-                       modules: List[List[int]], 
+def plot_network_heatmap(j_mat: np.ndarray, 
+                       module_list: List[List[int]] = None, 
                        spin_name_list: Optional[List[str]] = None,
                        fig_folder: Optional[str] = None) -> None:
     """
@@ -578,33 +331,99 @@ def plot_module_heatmap(j_mat: np.ndarray,
     j_mat = j_mat.copy()
     np.fill_diagonal(j_mat, 0)
     
+    if module_list is None:
+        module_list = [list(np.arange(num_spin))]
+
     # Create spin order based on modules
-    spin_order = [spin for cur_list in modules for spin in cur_list]
-    net_class_len = [len(cur_list) for cur_list in modules]
+    spin_order = [spin for cur_list in module_list for spin in cur_list]
+    net_class_len = [len(cur_list) for cur_list in module_list]
     
     # Create custom colormap
     cmap_hvec = mpl.colors.LinearSegmentedColormap.from_list("", ['#E84B23', '#FFFFFF', '#3285CC'])
     
+    color_thres = np.percentile(np.abs(j_mat[j_mat != 0]), 95)
+
     # Plot heatmap
-    sc.set_figure_params(figsize=[0.22 * num_spin + 0.5, 0.22 * num_spin])
-    plt.imshow(j_mat[:, spin_order][spin_order, :], cmap=cmap_hvec, vmin=-1, vmax=1)
+    sc.set_figure_params(figsize=[0.18 * num_spin + 0.5, 0.18 * num_spin])
+    plt.imshow(j_mat[:, spin_order][spin_order, :], cmap=cmap_hvec, vmin=- color_thres, vmax=color_thres)
     
     # Add module boundaries
     for ii in range(len(net_class_len)):
         plt.axhline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
         plt.axvline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
     
+    fsize = 9
+
     # Set labels
     if spin_name_list is not None:
-        plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=10)
-        plt.yticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], fontsize=10)
+        plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=fsize)
+        plt.yticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], fontsize=fsize)
     else:
-        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=10)
-        plt.yticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], fontsize=10)
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=fsize)
+        plt.yticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], fontsize=fsize)
         
-    plt.colorbar(fraction=0.03)
+    plt.colorbar(fraction=0.6 / num_spin)
     plt.grid()
-    plt.title(f'Network on {num_spin} programs', fontsize=12)
+    
+    # Save figure if folder is provided
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'network_heatmap.png', dpi=300, bbox_inches='tight')
+    
+    plt.show()
+
+
+def plot_response_heatmap(h_vec: np.ndarray, 
+                       module_list: List[List[int]]=None, 
+                       spin_name_list: Optional[List[str]] = None,
+                       sample_list: Optional[List[str]] = None,
+                       fig_folder: Optional[str] = None) -> None:
+    """
+    Plot a heatmap of the response matrix with modules highlighted.
+    
+    Parameters
+    ----------
+    h_vec : np.ndarray
+        The response vector.
+    modules : List[List[int]]
+        List of modules, where each module is a list of node indices.
+    spin_name_list : List[str], optional
+        List of names for the spins/nodes. If None, will use generic names.
+    sample_list : List[str], optional
+        List of names for the samples. If None, will use generic names.
+    fig_folder : str, optional
+        Folder path to save the figure. If None, will not save the figure.
+    """
+    num_spin, num_sample = h_vec.shape
+    h_vec = h_vec.copy()
+    
+    if module_list is None:
+        module_list = [list(leaves_list(linkage(h_vec, method='ward')))]
+
+    # Create spin order based on modules
+    spin_order = [spin for cur_list in module_list for spin in cur_list]
+    net_class_len = [len(cur_list) for cur_list in module_list]
+    sample_order = leaves_list(linkage(h_vec.T, method='ward'))
+    
+    cmap_hvec = mpl.colors.LinearSegmentedColormap.from_list("", ['#E84B23', '#FFFFFF', '#3285CC'])
+    
+    # Plot heatmap
+    sc.set_figure_params(figsize=[0.16 * num_spin + 0.5, 0.16 * num_sample])
+    plt.imshow(h_vec.T[sample_order, :][:, spin_order], cmap=cmap_hvec, vmin=- 1, vmax=1, aspect='auto')
+    
+    # Add module boundaries
+    for ii in range(len(net_class_len)):
+        plt.axvline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
+    
+    # Set labels
+    if spin_name_list is not None:
+        plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=8)
+    else:
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=8)
+    
+    plt.yticks(np.arange(len(sample_order)), np.array(sample_list)[sample_order], fontsize=8)
+        
+    plt.colorbar(fraction=1 / num_spin)
+    plt.grid()
     
     # Save figure if folder is provided
     if fig_folder is not None:
@@ -612,6 +431,46 @@ def plot_module_heatmap(j_mat: np.ndarray,
     
     plt.show()
 
+
+def create_undirected_network(j_mat, node_names, thres_strength=0.05):
+
+    np.fill_diagonal(j_mat, 0)
+        
+    # Filter weak connections
+    j_filt = j_mat.copy()
+    j_filt[np.abs(j_mat) < thres_strength] = 0
+    np.fill_diagonal(j_filt, 0)
+    
+    # Create networkx graph
+    G = nx.from_numpy_array(j_filt)
+    G = nx.relabel_nodes(G, {ii: node_names[ii] for ii in range(len(node_names))})
+
+    return G, j_filt
+
+
+def create_directed_network(j_mat, node_names,thres_strength=0.05, thres_direction=0.05):
+
+    np.fill_diagonal(j_mat, 0)
+
+    num_spin = j_mat.shape[0]
+    j_mat_directed = np.zeros(j_mat.shape)
+
+    for ind1 in range(num_spin):
+        for ind2 in range(num_spin):
+            if np.abs(j_mat[ind1, ind2]) > (1 + thres_direction) * np.abs(j_mat[ind2, ind1]):
+                j_mat_directed[ind1, ind2] = j_mat[ind1, ind2]
+            elif np.abs(j_mat[ind2, ind1]) > (1 + thres_direction) * np.abs(j_mat[ind1, ind2]):
+                j_mat_directed[ind2, ind1] = j_mat[ind2, ind1]
+            else:
+                j_mat_directed[ind1, ind2] = (j_mat[ind1, ind2] + j_mat[ind2, ind1]) / 2
+                j_mat_directed[ind2, ind1] = j_mat_directed[ind1, ind2]
+
+    j_mat_directed[np.abs(j_mat_directed) < thres_strength] = 0
+    
+    G = nx.from_numpy_array(j_mat_directed.T, create_using=nx.DiGraph)
+    G = nx.relabel_nodes(G, {ii: node_names[ii] for ii in range(len(node_names))})
+
+    return G, j_mat_directed
 
 
 def layout_loss_fun(xx, ori_pos, network):
@@ -636,6 +495,85 @@ def layout_loss_fun(xx, ori_pos, network):
 
     return stength_module * module_attract + strength_repulsion * repulse + strength_spring * spring_energy
 
+
+def remove_peripheral_nodes(G, min_in_degree=1, min_out_degree=1, max_iter=100):
+
+    cur_size = len(G.nodes)
+
+    for repeat in range(max_iter):
+
+        remove_nodes1 = [node for node, out_degree in G.out_degree() if out_degree <= min_out_degree]
+        remove_nodes2 = [node for node, in_degree in G.in_degree() if in_degree <= min_in_degree]
+        remove_nodes = list(set(remove_nodes1 + remove_nodes2))
+        G.remove_nodes_from(remove_nodes)
+
+        if cur_size == len(G.nodes):
+            break
+        else:
+            cur_size = len(G.nodes)
+
+    print(f'{len(G.nodes)} nodes after filtering ')
+
+    return G
+
+
+def compute_modules(G_nx, resolution: float = 1.0,
+                        seed: int = 1) -> List[List[int]]:
+    """
+    Compute network modules using Leiden community detection.
+    
+    Parameters
+    ----------
+    resolution : float, optional
+        Resolution parameter for Leiden community detection. Higher values lead to more modules. Default is 1.0.
+    seed : int, optional
+        Random seed for Leiden community detection. Default is 0.
+    thres : float, optional
+        Threshold for filtering weak connections. Default is 0.
+        
+    Returns
+    -------
+    List[List[int]]
+        List of modules, where each module is a list of node indices.
+    """
+
+    adj_matrix = nx.to_numpy_array(G_nx, weight='weight')
+    sub_gene_list = list(G_nx.nodes)
+
+    G = nx.from_numpy_array(adj_matrix)
+
+    G = ig.Graph.from_networkx(G)
+    
+    # Separate positive and negative edges
+    G_pos = G.subgraph_edges(G.es.select(weight_gt=0), delete_vertices=False)
+    G_neg = G.subgraph_edges(G.es.select(weight_lt=0), delete_vertices=False)
+    G_neg.es['weight'] = [-w for w in G_neg.es['weight']]
+    
+    # Apply Leiden community detection
+    part_pos = la.RBConfigurationVertexPartition(G_pos, weights='weight', resolution_parameter=resolution)
+    part_neg = la.RBConfigurationVertexPartition(G_neg, weights='weight', resolution_parameter=resolution)
+    
+    optimiser = la.Optimiser()
+    optimiser.set_rng_seed(seed)
+    
+    diff = optimiser.optimise_partition_multiplex([part_pos, part_neg], layer_weights=[1, -1])
+    
+    # Extract modules
+    net_class = list(part_pos)
+    
+    print(f'Identified {len(net_class)} modules with sizes {np.array([len(cur_list) for cur_list in net_class])}')
+
+    abs_degree = np.abs(adj_matrix).sum(axis=1)
+
+    # rank node inside each module by degree
+    for ii in range(len(net_class)):
+        cur_list = net_class[ii]
+        cur_list = sorted(cur_list, key=lambda xx: abs_degree[xx], reverse=True)
+        net_class[ii] = cur_list
+
+    return net_class
+
+
 def compute_module_angle(module_size, gap_size):
 
     module_plots_size = np.sqrt(module_size)
@@ -652,7 +590,8 @@ def compute_module_angle(module_size, gap_size):
 
     return angle_list
 
-def compute_pos_from_module(network, net_class, circle_size=None, module_angle=None, gap_size=0.5):
+
+def compute_network_positions(network, net_class, circle_size=None, module_angle=None, gap_size=0.5):
 
     module_size = np.array([len(cur_list) for cur_list in net_class])
     num_spin = np.sum(module_size)
@@ -683,36 +622,13 @@ def compute_pos_from_module(network, net_class, circle_size=None, module_angle=N
     return pos
 
 
-def compute_network_positions(j_mat: np.ndarray,
-                             modules: List[List[int]])-> Dict[int, Tuple[float, float]]:
-    """
-    Compute positions for network nodes based on modules.
-    
-    Parameters
-    ----------
-    j_mat : np.ndarray
-        The network adjacency matrix.
-    modules : List[List[int]]
-        List of modules, where each module is a list of node indices.
-    
-    Returns
-    -------
-    Dict[int, Tuple[float, float]]
-        Dictionary mapping node indices to (x, y) positions.
-    """
-    
-    pos = compute_pos_from_module(j_mat, modules)
-    
-    return pos
-
-
 def plot_network_diagram(j_mat: np.ndarray,
                         modules: List[List[int]],
+                        directed: bool = False,
                         pos: Optional[Dict[int, Tuple[float, float]]] = None, 
+                        weight_thres: float = None,
                         spin_name_list_short: Optional[List[str]] = None,
-                        spin_name_list: Optional[List[str]] = None,
-                        fig_folder: Optional[str] = None,
-                        num_spin: Optional[int] = None) -> None:
+                        fig_folder: Optional[str] = None) -> None:
     """
     Plot the network diagram with modules highlighted.
     
@@ -722,28 +638,33 @@ def plot_network_diagram(j_mat: np.ndarray,
         The network adjacency matrix.
     modules : List[List[int]]
         List of modules, where each module is a list of node indices.
+    directed : bool, optional
+        Whether the network is directed. If True, will plot the network as a directed network.
     pos : Dict[int, Tuple[float, float]], optional
         Dictionary mapping node indices to (x, y) positions. If None, positions will be computed automatically.
+    weight_thres : float, optional
+        Threshold for filtering weak connections. If None, will filter by the 10th percentile of the absolute nonzero values of the network adjacency matrix.
     spin_name_list_short : List[str], optional
         Short names for the spins/nodes (used for labels). If None, will use generic names.
-    spin_name_list : List[str], optional
-        Full names for the spins/nodes (used for tooltips). If None, will use generic names.
     fig_folder : str, optional
         Folder path to save the figure. If None, will not save the figure.
-    num_spin : int, optional
-        Number of spins. If None, will be inferred from j_mat shape.
     """
-    if num_spin is None:
-        num_spin = j_mat.shape[0]
+    num_spin = j_mat.shape[0]
     
     # Filter network for visualization
-    thres = 0.2
+    if weight_thres is None:
+        thres = np.percentile(np.abs(j_mat[j_mat != 0]), 10)
+    else:
+        thres = weight_thres
+
     j_filt = j_mat.copy()
     j_filt[np.abs(j_mat) < thres] = 0
     np.fill_diagonal(j_filt, 0)
     
-    # Create networkx graph
-    G = nx.from_numpy_array(j_filt)
+    if directed:
+        G = nx.from_numpy_array(j_filt, create_using=nx.DiGraph)
+    else:
+        G = nx.from_numpy_array(j_filt)
     
     # Compute positions
     if pos is None:
@@ -756,7 +677,7 @@ def plot_network_diagram(j_mat: np.ndarray,
         label = {ii: f'P{ii}' for ii in range(num_spin)}
     
     # Plot network
-    fig_size = 3 * num_spin ** 0.3
+    fig_size = 4 * num_spin ** 0.25
     sc.set_figure_params(figsize=[fig_size, fig_size])
     fig, ax = plt.subplots()
     
@@ -767,14 +688,16 @@ def plot_network_diagram(j_mat: np.ndarray,
     enega = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] < 0]
     wnega = np.array([d['weight'] for (u, v, d) in G.edges(data=True) if d['weight'] < 0])
     
+    linewz = 0.5 / thres 
+
     # Draw positive edges
     if len(eposi) > 0:
-        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=eposi, width=3 * wposi,
+        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=eposi, width=linewz * wposi,
                                edge_color='#3285CC', alpha=0.7)
     
     # Draw negative edges
     if len(enega) > 0:
-        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=enega, width=3 * (-wnega),
+        nx.draw_networkx_edges(G, pos, ax=ax, edgelist=enega, width=linewz * (-wnega),
                                edge_color='#E84B23', alpha=0.7)
     
     # Draw nodes
@@ -790,25 +713,9 @@ def plot_network_diagram(j_mat: np.ndarray,
     
     ax.set_aspect('equal')
     ax.set_axis_off()
-    plt.title('Network Diagram with Modules', fontsize=12)
 
-    # Print the spin_name_list in a column to the right of the figure
-    if spin_name_list is not None:
-        # Place the text to the right of the plot
-        # Get axis limits to determine placement
-        xlim = ax.get_xlim()
-        ylim = ax.get_ylim()
-        # Place the column at a little to the right of the rightmost node
-        x_text = xlim[1] + 0.02 * (xlim[1] - xlim[0])
-        y_start = ylim[1] - 0.05 * (ylim[1] - ylim[0])
-        line_gap = fig_size / 20
-        for idx, name in enumerate(spin_name_list):
-            ax.text(x_text, y_start - idx * line_gap, name, fontsize=10, va='top', ha='left')
-        # Optionally, expand the xlim to make space for the text
-        ax.set_xlim(xlim[0], x_text + 1.5)
-    
     # Save figure if folder is provided
     if fig_folder is not None:
         plt.savefig(fig_folder + 'network_diagram.png', dpi=300, bbox_inches='tight')
     
-    plt.show() 
+    plt.show()

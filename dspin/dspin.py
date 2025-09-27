@@ -109,10 +109,6 @@ class AbstractDSPIN(ABC):
     @property
     def sample_list(self):
         return self._samp_list
-
-    @property
-    def modules(self):
-        return self._modules
     
     @property
     def name_list(self):
@@ -145,10 +141,6 @@ class AbstractDSPIN(ABC):
     @sample_list.setter
     def sample_list(self, value):
         self._samp_list = value
-
-    @modules.setter
-    def modules(self, value):
-        self._modules = value
 
     @name_list.setter
     def name_list(self, value):
@@ -389,62 +381,6 @@ class AbstractDSPIN(ABC):
 
         self._relative_responses = compute_relative_responses(self.responses, if_control, batch_index)
 
-    def compute_modules(self, 
-                        resolution: float = 1.0,
-                        seed: int = 0,
-                        thres: float = 0) -> List[List[int]]:
-        """
-        Compute network modules using Leiden community detection.
-        
-        Parameters
-        ----------
-        resolution : float, optional
-            Resolution parameter for Leiden community detection. Higher values lead to more modules. Default is 1.0.
-        seed : int, optional
-            Random seed for Leiden community detection. Default is 0.
-        thres : float, optional
-            Threshold for filtering weak connections. Default is 0.
-            
-        Returns
-        -------
-        List[List[int]]
-            List of modules, where each module is a list of node indices.
-        """
-        if not hasattr(self, '_network') or self._network is None:
-            raise ValueError("Network must be inferred before computing modules. Run network_inference() first.")
-            
-        j_mat = self._network.copy()
-        np.fill_diagonal(j_mat, 0)
-        
-        # Filter weak connections
-        j_filt = j_mat.copy()
-        j_filt[np.abs(j_mat) < thres] = 0
-        np.fill_diagonal(j_filt, 0)
-        
-        # Create networkx graph
-        G = nx.from_numpy_array(j_filt)
-        G = ig.Graph.from_networkx(G)
-        
-        # Separate positive and negative edges
-        G_pos = G.subgraph_edges(G.es.select(weight_gt=0), delete_vertices=False)
-        G_neg = G.subgraph_edges(G.es.select(weight_lt=0), delete_vertices=False)
-        G_neg.es['weight'] = [-w for w in G_neg.es['weight']]
-        
-        # Apply Leiden community detection
-        part_pos = la.RBConfigurationVertexPartition(G_pos, weights='weight', resolution_parameter=resolution)
-        part_neg = la.RBConfigurationVertexPartition(G_neg, weights='weight', resolution_parameter=resolution)
-        
-        optimiser = la.Optimiser()
-        optimiser.set_rng_seed(seed)
-        
-        diff = optimiser.optimise_partition_multiplex([part_pos, part_neg], layer_weights=[1, -1])
-        
-        # Extract modules
-        net_class = list(part_pos)
-        self._modules = net_class
-        
-        print(f'Identified {len(net_class)} modules with sizes {np.array([len(cur_list) for cur_list in net_class])}')
-
 
 class GeneDSPIN(AbstractDSPIN):
     """
@@ -488,7 +424,9 @@ class GeneDSPIN(AbstractDSPIN):
             cur_gene = self._onmf_rep_ori[:, ii]
             gene_skew[ii] = skew(cur_gene, bias=False)
 
-        if gene_skew.mean() > 2:
+        print(f'Skewness of the gene expression: {gene_skew.mean().round(3)}')
+
+        if gene_skew.mean() >= 1.5:
             default_clip = 95
         else:
             default_clip = 100
