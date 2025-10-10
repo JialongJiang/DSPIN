@@ -719,3 +719,58 @@ def plot_network_diagram(j_mat: np.ndarray,
         plt.savefig(fig_folder + 'network_diagram.png', dpi=300, bbox_inches='tight')
     
     plt.show()
+
+def plot_top_regulators(program_interactions: np.ndarray, 
+                        program_index: int, 
+                        gene_list: np.array, 
+                        program_name: Optional[str] = None, 
+                        thres: Optional[float] = None, 
+                        fig_folder: Optional[str] = None) -> None:
+    
+    """
+    Plot the top regulators of a program.
+
+    Parameters
+    ----------
+    program_interactions : np.ndarray
+        The program interactions.
+    program_index : int
+        The index of the program.
+    gene_list : np.array
+        The list of genes.
+    program_name : Optional[str], optional
+        The name of the program.
+    thres : Optional[float], optional
+        The threshold for the regulators.
+    fig_folder : Optional[str], optional
+        The folder to save the figure.
+    """
+
+    cur_regulators = program_interactions[:, program_index]
+    if thres is None:
+        thres = np.sort(np.abs(cur_regulators))[::-1][20]
+
+    num_gene_show_pos = np.sum(cur_regulators >= thres)
+    num_gene_show_neg = np.sum(cur_regulators <= -thres)
+    num_gene_show = num_gene_show_pos + num_gene_show_neg
+
+    plot_ind_pos = np.argsort(cur_regulators)[::-1][:num_gene_show_pos]
+    plot_ind_neg = np.argsort(cur_regulators)[:num_gene_show_neg]
+
+    plot_ind = np.concatenate([plot_ind_pos, plot_ind_neg])
+
+    sc.set_figure_params(figsize=(num_gene_show * 0.17, 2))
+
+    plt.scatter(np.arange(num_gene_show), cur_regulators[plot_ind], c=np.where(cur_regulators[plot_ind] > 0,'#3285CC', '#E84B23'), zorder=10)
+    plt.xticks(np.arange(num_gene_show), np.array(gene_list)[plot_ind], rotation=90, fontsize=9); 
+    plt.yticks(fontsize=10)
+    plt.ylabel('Regulator strength', fontsize=10)
+    plt.xlabel('Regulator', fontsize=10)
+
+    if program_name is not None:
+        plt.title(program_name, fontsize=10)
+
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'top_regulators.png')
+
+    plt.show()    
