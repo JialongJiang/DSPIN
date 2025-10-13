@@ -985,6 +985,7 @@ def apply_regularization(rec_jgrad: np.ndarray,
 
         if 'lambda_l2_h_rela_prior' in train_dat:
             perturb_matrix = train_dat['perturb_matrix']
+            rec_hgrad = average_batch_control(rec_hgrad, if_control, batch_index)
             rec_hgrad += train_dat['lambda_l2_h_rela_prior'] * (h_rela - perturb_matrix)
 
         if 'lambda_l1_h_rela' in train_dat:
@@ -1421,7 +1422,7 @@ def compute_relative_responses(cur_h: np.ndarray,
         batch_samples_idx = np.where(batch_index == current_batch)[0]
 
         if np.any(if_control[batch_samples_idx]):
-            batch_controls_idx = batch_samples_idx[if_control[batch_samples_idx]]
+            batch_controls_idx = batch_samples_idx[np.where(if_control[batch_samples_idx])[0]]
             batch_controls_mean = np.mean(cur_h[:, batch_controls_idx], axis=1)
         else:
             batch_controls_mean = all_controls_mean
@@ -1431,6 +1432,39 @@ def compute_relative_responses(cur_h: np.ndarray,
 
     return relative_h
 
+
+def average_batch_control(hgrad_raw: np.ndarray, 
+                        if_control: np.ndarray, 
+                        batch_index: np.ndarray) -> np.ndarray:
+    """
+    Assign the gradient of control samples as the average gradient of the samples in the same batch.
+
+    Parameters
+    ----------
+    hgrad : np.ndarray
+        The gradient of the h matrix.
+    if_control : np.ndarray
+        A boolean array indicating which samples are control samples.
+    batch_index : np.ndarray
+        An array indicating the batch assignment for each sample.
+    """
+
+    hgrad = hgrad_raw.copy() 
+    
+    unique_batches = np.unique(batch_index)
+    num_batches = len(unique_batches)
+
+    for current_batch in unique_batches:
+        batch_samples_idx = np.where(batch_index == current_batch)[0]
+        
+        if np.any(if_control[batch_samples_idx]):
+            if np.any(if_control[batch_samples_idx]):
+                batch_controls_idx = batch_samples_idx[np.where(if_control[batch_samples_idx])[0]]
+                batch_mean = np.mean(hgrad_raw[:, batch_samples_idx], axis=1)
+
+                hgrad[:, batch_controls_idx] = batch_mean[:, np.newaxis]
+
+    return hgrad
 
 def select_representative_sample(raw_data: List[Tuple[np.ndarray, np.ndarray]], 
                                  num_select: int) -> List[int]:
