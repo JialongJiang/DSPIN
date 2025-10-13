@@ -226,7 +226,7 @@ class AbstractDSPIN(ABC):
             self._samp_list = self._samp_list[sample_list_ordered_ind]
             raw_data = raw_data[sample_list_ordered_ind]
             self._raw_data = raw_data
-            print("Using a subset of {} samples for network inference.".format(len(self._samp_list)))
+            print("Using a ordered subset of {} samples for network inference.".format(len(self._samp_list)))
 
         num_sample = len(raw_data)
         params = {'num_epoch': 400,
@@ -263,6 +263,8 @@ class AbstractDSPIN(ABC):
                           sample_list_ordered: List[str] = None,
                           prior_network: np.ndarray = None,
                           perturb_matrix: np.ndarray = None,
+                          if_control_key: str = 'if_control',
+                          batch_key: str = 'batch',
                           run_with_matlab: bool = False) -> None:
         """
         Perform network inference using a specified method and parameters.
@@ -283,6 +285,10 @@ class AbstractDSPIN(ABC):
             Binary matrix of preferred network connectivity from prior knowledge. Default is None.
         perturb_matrix : np.ndarray, optional
             Matrix of putative relative responses to control samples. Default is None.
+        if_control_key : str, optional
+            Column name in `adata.obs` indicating whether a sample is a control. Default is 'if_control'.
+        batch_key : str, optional
+            Column name in `adata.obs` specifying batch assignment for each sample. Default is 'batch'.
         run_with_matlab : bool, optional
             If True, prepares data for MATLAB execution instead of running inference in Python. Default is False.
         """
@@ -330,7 +336,21 @@ class AbstractDSPIN(ABC):
             train_dat['lambda_l1_j_prior_mask'] = 0.01
 
         if perturb_matrix is not None:
+            if if_control_key not in self.adata.obs.columns:
+                raise ValueError(f"Column '{if_control_key}' not found in adata.obs.")
+            if batch_key not in self.adata.obs.columns:
+                raise ValueError(f"Column '{batch_key}' not found in adata.obs.")
+
+            sample_list = self._samp_list
+            sample_to_control = self.adata.obs.groupby(sample_id_key, observed=False)[if_control_key].first().to_dict()
+            sample_to_batch = self.adata.obs.groupby(sample_id_key, observed=False)[batch_key].first().to_dict()
+
+            if_control = np.array([sample_to_control[sample] for sample in sample_list])
+            batch_index = np.array([sample_to_batch[sample] for sample in sample_list])
+
             train_dat['perturb_matrix'] = perturb_matrix
+            train_dat['if_control'] = if_control
+            train_dat['batch_index'] = batch_index
             train_dat['lambda_l2_h_rela_prior'] = 0.5
 
         train_dat['directed'] = directed
