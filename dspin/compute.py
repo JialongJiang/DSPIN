@@ -732,66 +732,102 @@ def samp_moments(j_mat: np.ndarray,
         The correlation parameter.
         The mean parameter.
     """
+    sample_size = int(sample_size)
+    mixing_time = int(mixing_time)
+    samp_gap = int(samp_gap)
+
     per_batch = int(1e5)
     num_spin = j_mat.shape[0]
-    rec_corr = np.zeros((num_spin, num_spin))
-    rec_mean = np.zeros(num_spin)
-    beta = 1
+    rec_corr = np.zeros((num_spin, num_spin), dtype=np.float64)
+    rec_mean = np.zeros(num_spin, dtype=np.float64)
+    beta = 1.0
     batch_count = 1
-    rec_sample = np.empty((num_spin, min(per_batch, int(sample_size))))
-    cur_spin = (np.random.randint(0, 3, (num_spin, 1)) - 1).astype(np.float64)
-    tot_sampling = int(
-        mixing_time + sample_size * samp_gap - mixing_time % samp_gap)
+    rec_sample = np.empty((num_spin, min(per_batch, int(sample_size))), dtype=np.float64)
 
-    rand_ind = np.random.randint(0, num_spin, tot_sampling)
+    # Cast & make contiguous (Numba-safe)
+    j_mat = np.ascontiguousarray(j_mat.astype(np.float64))
+    # Accept both (n,) and (n,1) h_vec; flatten to 1D
+    h_vec = h_vec.reshape(h_vec.size)
+    h_vec = np.ascontiguousarray(h_vec.astype(np.float64))
+
+    # Spins in {-1,0,1}
+    cur_spin = (np.random.randint(0, 3, num_spin) - 1).astype(np.float64)
+
+    # Local field f = h + J @ s (update incrementally on accepted flips)
+    f_vec = h_vec + j_mat.dot(cur_spin)
+
+    # Sampling schedule (avoid modulo inside loop)
+    rem = mixing_time % samp_gap
+    first_sample = mixing_time if rem == 0 else (mixing_time + (samp_gap - rem))
+    last_sample = first_sample + (sample_size - 1) * samp_gap
+    tot_sampling = last_sample + 1
+    next_sample = first_sample
+
+    # Pre-generate randomness
+    rand_ind  = np.random.randint(0, num_spin, tot_sampling)
     rand_flip = np.random.randint(0, 2, tot_sampling)
     rand_prob = np.random.rand(tot_sampling)
 
-    # Monte Carlo Sampling
+    # MCMC
     for ii in range(tot_sampling):
         cur_ind = rand_ind[ii]
-        j_sub = j_mat[cur_ind, :]
-        accept_prob = 0.0
         new_spin = 0.0
         diff_energy = 0.0
+        accept = False
 
-        if cur_spin[cur_ind] == 0:
-            if rand_flip[ii] == 0:
-                new_spin = 1.0
-            else:
-                new_spin = -1.0
-            diff_energy = -j_mat[cur_ind, cur_ind] - new_spin * (j_sub.dot(cur_spin) + h_vec[cur_ind])
-            accept_prob = min(1.0, np.exp(- diff_energy * beta)[0])
+        s_i = cur_spin[cur_ind]
+
+        if s_i == 0.0:
+            # 0 -> ±1
+            new_spin = 1.0 if rand_flip[ii] == 0 else - 1.0
+            diff_energy = -j_mat[cur_ind, cur_ind] - new_spin * f_vec[cur_ind]
+            tacc = -diff_energy * beta
+            u = rand_prob[ii] if rand_prob[ii] != 0.0 else 1e-16
+            accept = (tacc >= 0.0) or (np.log(u) < tacc)
         else:
-            if rand_flip[ii] == 0:
-                accept_prob = 0;
-            else:
-                diff_energy = cur_spin[cur_ind] * (j_sub.dot(cur_spin) + h_vec[cur_ind])
-                accept_prob = min(1.0, np.exp(- diff_energy * beta)[0])
+            # ±1 -> 0 only if rand_flip == 1
+            if rand_flip[ii] == 1:
+                new_spin = 0.0
+                diff_energy = s_i * f_vec[cur_ind]
+                tacc = - diff_energy * beta
+                u = rand_prob[ii] if rand_prob[ii] != 0.0 else 1e-16
+                accept = (tacc >= 0.0) or (np.log(u) < tacc)
 
-        if rand_prob[ii] < accept_prob:
-            if cur_spin[cur_ind] == 0:
-                cur_spin[cur_ind] = new_spin
-            else:
-                cur_spin[cur_ind] = 0
+        if accept:
+            delta_s = new_spin - s_i
+            cur_spin[cur_ind] = new_spin
+            # Incremental local-field update: f_k += J[k,i] * delta_s
+            for k in range(num_spin):
+                f_vec[k] += j_mat[k, cur_ind] * delta_s
 
-        if ii > mixing_time:
-            if (ii - mixing_time) % samp_gap == 0:
-                rec_sample[:, batch_count - 1] = cur_spin[:, 0].copy()
-                batch_count += 1
+        # Record sample on schedule
+        if ii == next_sample:
+            for k in range(num_spin):
+                rec_sample[k, batch_count - 1] = cur_spin[k]
+            batch_count += 1
+            next_sample += samp_gap
 
-                if batch_count == per_batch + 1:
-                    batch_count = 1
-                    rec_sample = np.ascontiguousarray(rec_sample)
-                    rec_corr += rec_sample.dot(rec_sample.T)
-                    rec_mean += np.sum(rec_sample, axis=1)
+            if batch_count == rec_sample.shape[1] + 1:
+                batch_count = 1
+                rec_sample = np.ascontiguousarray(rec_sample)
+                rec_corr += rec_sample.dot(rec_sample.T)
+                # robust axis sum for Numba
+                for k in range(num_spin):
+                    ssum = 0.0
+                    for b in range(rec_sample.shape[1]):
+                        ssum += rec_sample[k, b]
+                    rec_mean[k] += ssum
 
-    # Final processing of collected samples
+    # Flush remaining batch
     if batch_count != 1:
-        cur_sample = rec_sample[:, :batch_count - 1]
-        cur_sample = np.ascontiguousarray(cur_sample)
+        cols = batch_count - 1
+        cur_sample = np.ascontiguousarray(rec_sample[:, :cols])
         rec_corr += cur_sample.dot(cur_sample.T)
-        rec_mean += np.sum(cur_sample, axis=1)
+        for k in range(num_spin):
+            ssum = 0.0
+            for b in range(cols):
+                ssum += cur_sample[k, b]
+            rec_mean[k] += ssum
 
     corr_para = rec_corr / sample_size
     mean_para = rec_mean / sample_size
