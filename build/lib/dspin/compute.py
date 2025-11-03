@@ -21,6 +21,10 @@ from typing import Tuple, List, Callable, Any, Dict
 import warnings
 from scipy.sparse import issparse
 from joblib import Parallel, delayed, parallel_backend
+from sklearn.cluster import AgglomerativeClustering
+import leidenalg as la
+import igraph as ig
+import networkx as nx
 
 
 def category_balance_number(
@@ -69,11 +73,6 @@ def category_balance_number(
     sampling_number = (weight_fun / np.sum(weight_fun) * total_sample_size).astype(int)
     return sampling_number
 
-
-from sklearn.cluster import AgglomerativeClustering
-import leidenalg as la
-import igraph as ig
-import networkx as nx
 
 def summary_components(all_components: np.array,
                        num_spin: int,
@@ -124,8 +123,6 @@ def summary_components(all_components: np.array,
         for ii in range(num_spin):
             # Determine gene cluster assignments based on the maximum component values.
             gene_groups_ind.append(np.argmax(components_kmeans, axis=0) == ii)
-
-        
 
         sc.set_figure_params(figsize=(8, 4))
 
@@ -569,6 +566,7 @@ def para_moments_numpy(j_mat: np.array, h_vec: np.array) -> Tuple[np.array, np.a
 
     return corr_para, mean_para
 
+
 @numba.njit(fastmath=True, cache=True)
 def para_moments(j_mat: np.ndarray,
                        h_vec: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -708,10 +706,159 @@ def pseudol_gradient(cur_j: np.ndarray,
 def samp_moments(j_mat: np.ndarray, 
                  h_vec: np.ndarray, 
                  sample_size: int, 
-                 mixing_time: int, 
-                 samp_gap: int) -> Tuple[np.ndarray, np.ndarray]:
+                 mixing_time: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     Sample moments for the Markov Chain Monte Carlo (MCMC).
+
+    Parameters
+    ----------
+    j_mat : np.ndarray
+        Interaction matrix.
+    h_vec : np.ndarray
+        External field vector.
+    sample_size : int
+        Size of the sample.
+    mixing_time : int
+        Mixing time for the MCMC.
+
+    Returns
+    -------
+    Tuple[np.array, np.array]
+        The correlation parameter.
+        The mean parameter.
+    """
+    sample_size = int(sample_size)
+    mixing_time = int(mixing_time)
+
+    num_spin = j_mat.shape[0]
+    rec_corr = np.zeros((num_spin, num_spin), dtype=np.float64)
+    rec_mean = np.zeros(num_spin, dtype=np.float64)
+    beta = 1.0
+
+    # Cast & make contiguous (Numba-safe)
+    j_mat = np.ascontiguousarray(j_mat.astype(np.float64))
+    h_vec = np.ascontiguousarray(h_vec.astype(np.float64)).reshape(-1)
+    
+    # Spins in {-1,0,1}
+    cur_spin = np.sign(h_vec).astype(np.float64)
+
+    # Local field f = h + J @ s (update incrementally on changes)
+    f_vec = h_vec + j_mat.dot(cur_spin)
+
+    # Sampling schedule
+    tot_sampling = sample_size + mixing_time
+
+    # Pre-generate randomness (one uniform per site update)
+    rand_prob = np.random.rand(tot_sampling)
+
+    # Lazy accumulation buffers
+    last_outer = np.zeros((num_spin, num_spin), dtype=np.float64)  # current s s^T
+    have_last_outer = False
+    recording_started = False
+    weight = 0  # how many identical samples to add for current last_outer
+
+    # MCMC with sweep updates + heat-bath conditionals
+    for ii in range(tot_sampling):
+        # sweep index (no random site index)
+        cur_ind = ii % num_spin
+
+        # current spin and local field excluding self-term
+        s_i = cur_spin[cur_ind]
+        Jii = j_mat[cur_ind, cur_ind]
+        hstar = f_vec[cur_ind] - Jii * s_i
+
+        # heat-bath weights for k in {+1, 0, -1}:
+        # log-weights: a = beta*( hstar + 0.5*Jii ), b = 0, c = beta*( -hstar + 0.5*Jii )
+        a = beta * (hstar + Jii)
+        b = 0.0
+        c = beta * (-hstar + Jii)
+        m = max(a, b, c)
+        pa = np.exp(a - m)
+        pb = np.exp(b - m)  # == exp(-m)
+        pc = np.exp(c - m)
+        Z = pa + pb + pc
+
+        # sample new spin
+        u = rand_prob[ii]
+        thresh_a = pa / Z
+        thresh_ab = (pa + pb) / Z
+        if u < thresh_a:
+            new_spin = 1.0
+        elif u < thresh_ab:
+            new_spin = 0.0
+        else:
+            new_spin = - 1.0
+
+        # if spin changed, update cur_spin and cached field
+        changed = (new_spin != s_i)
+        if changed:
+            delta_s = new_spin - s_i
+            cur_spin[cur_ind] = new_spin
+            # incremental local-field update: f_k += J[k,i] * delta_s
+            for k in range(num_spin):
+                f_vec[k] += j_mat[k, cur_ind] * delta_s
+
+            # If we're recording and have accumulated weight, flush rec_corr BEFORE changing last_outer
+            if recording_started and weight > 0 and have_last_outer:
+                for k in range(num_spin):
+                    row = rec_corr[k]
+                    lo_row = last_outer[k]
+                    for l in range(num_spin):
+                        row[l] += weight * lo_row[l]
+                weight = 0
+
+            # Update last_outer incrementally if it exists
+            if recording_started and have_last_outer:
+                d = delta_s
+                i = cur_ind
+                # s's' = s s^T + d (e_i s'^T + s' e_i^T) - d^2 e_i e_i^T  (uses updated cur_spin)
+                for j in range(num_spin):
+                    last_outer[i, j] += d * cur_spin[j]
+                for j in range(num_spin):
+                    last_outer[j, i] += d * cur_spin[j]
+                last_outer[i, i] -= d * d
+
+        # Record sample on schedule
+        if ii >= mixing_time:
+            # mean: O(N)
+            for k in range(num_spin):
+                rec_mean[k] += cur_spin[k]
+
+            # initialize last_outer once at the first record
+            if not recording_started:
+                for k in range(num_spin):
+                    sk = cur_spin[k]
+                    row = last_outer[k]
+                    for l in range(num_spin):
+                        row[l] = sk * cur_spin[l]
+                have_last_outer = True
+                recording_started = True
+
+            # lazily count how many times to add current outer
+            weight += 1
+
+    # Flush any remaining weight after the loop
+    if recording_started and weight > 0 and have_last_outer:
+        for k in range(num_spin):
+            row = rec_corr[k]
+            lo_row = last_outer[k]
+            for l in range(num_spin):
+                row[l] += weight * lo_row[l]
+
+    corr_para = rec_corr / sample_size
+    mean_para = rec_mean / sample_size
+    
+    return corr_para, mean_para
+
+
+@numba.njit()
+def samp_mcmc_states(j_mat: np.ndarray, 
+                    h_vec: np.ndarray, 
+                    sample_size: int, 
+                    mixing_time: int, 
+                    samp_gap: int) -> np.ndarray:
+    """
+    Sample states for the Markov Chain Monte Carlo (MCMC).
 
     Parameters
     ----------
@@ -728,75 +875,91 @@ def samp_moments(j_mat: np.ndarray,
 
     Returns
     -------
-    Tuple[np.array, np.array]
-        The correlation parameter.
-        The mean parameter.
+    np.ndarray
+        The sampled states.
     """
-    per_batch = int(1e5)
-    num_spin = j_mat.shape[0]
-    rec_corr = np.zeros((num_spin, num_spin))
-    rec_mean = np.zeros(num_spin)
-    beta = 1
-    batch_count = 1
-    rec_sample = np.empty((num_spin, min(per_batch, int(sample_size))))
-    cur_spin = (np.random.randint(0, 3, (num_spin, 1)) - 1).astype(np.float64)
-    tot_sampling = int(
-        mixing_time + sample_size * samp_gap - mixing_time % samp_gap)
+    sample_size = int(sample_size)
+    mixing_time = int(mixing_time)
+    samp_gap = int(samp_gap)
 
-    rand_ind = np.random.randint(0, num_spin, tot_sampling)
-    rand_flip = np.random.randint(0, 2, tot_sampling)
+    num_spin = j_mat.shape[0]
+
+    beta = 1.0
+    batch_count = 1
+    rec_sample = np.empty((num_spin, int(sample_size)), dtype=np.float64)
+
+    # Cast & make contiguous (Numba-safe)
+    j_mat = np.ascontiguousarray(j_mat.astype(np.float64))
+    # Accept both (n,) and (n,1) h_vec; flatten to 1D
+    h_vec = h_vec.reshape(h_vec.size)
+    h_vec = np.ascontiguousarray(h_vec.astype(np.float64))
+
+    # Spins in {-1,0,1}
+    cur_spin = (np.random.randint(0, 3, num_spin) - 1).astype(np.float64)
+
+    # Local field f = h + J @ s (update incrementally on changes)
+    f_vec = h_vec + j_mat.dot(cur_spin)
+
+    # Sampling schedule (avoid modulo inside loop)
+    rem = mixing_time % samp_gap
+    first_sample = mixing_time if rem == 0 else (mixing_time + (samp_gap - rem))
+    last_sample = first_sample + (sample_size - 1) * samp_gap
+    tot_sampling = last_sample + 1
+    next_sample = first_sample
+
+    # Pre-generate randomness: one uniform per single-site update
     rand_prob = np.random.rand(tot_sampling)
 
-    # Monte Carlo Sampling
+    # MCMC (Gibbs) with deterministic sweep order
     for ii in range(tot_sampling):
-        cur_ind = rand_ind[ii]
-        j_sub = j_mat[cur_ind, :]
-        accept_prob = 0.0
-        new_spin = 0.0
-        diff_energy = 0.0
+        cur_ind = ii % num_spin
 
-        if cur_spin[cur_ind] == 0:
-            if rand_flip[ii] == 0:
-                new_spin = 1.0
-            else:
-                new_spin = -1.0
-            diff_energy = -j_mat[cur_ind, cur_ind] - new_spin * (j_sub.dot(cur_spin) + h_vec[cur_ind])
-            accept_prob = min(1.0, np.exp(- diff_energy * beta)[0])
+        # ---- Compute conditional for s_i given s_-i (PRE-UPDATE neighborhood) ----
+        s_i = cur_spin[cur_ind]
+        Jii = j_mat[cur_ind, cur_ind]
+        # h*_i = h_i + sum_{j!=i} J_ij s_j = f_i - J_ii * s_i  (pre-update)
+        hstar = f_vec[cur_ind] - Jii * s_i
+
+        # Unnormalized log-weights for k in {+1, 0, -1}
+        # Matches the enumerator convention (diagonal contributes +J_ii*k^2 here)
+        a = beta * (hstar + Jii)    # log w(+1)
+        b = 0.0                     # log w(0)
+        c = beta * (-hstar + Jii)   # log w(-1)
+
+        # Stable normalization via max-trick
+        m = max(a, b, c)
+        pa = np.exp(a - m)
+        pb = np.exp(b - m)
+        pc = np.exp(c - m)
+        Z = pa + pb + pc
+
+        # Sample new spin from the conditional (heat-bath)
+        u = rand_prob[ii]
+        t1 = pa / Z
+        t2 = (pa + pb) / Z
+        if u < t1:
+            new_spin = 1.0
+        elif u < t2:
+            new_spin = 0.0
         else:
-            if rand_flip[ii] == 0:
-                accept_prob = 0;
-            else:
-                diff_energy = cur_spin[cur_ind] * (j_sub.dot(cur_spin) + h_vec[cur_ind])
-                accept_prob = min(1.0, np.exp(- diff_energy * beta)[0])
+            new_spin = -1.0
 
-        if rand_prob[ii] < accept_prob:
-            if cur_spin[cur_ind] == 0:
-                cur_spin[cur_ind] = new_spin
-            else:
-                cur_spin[cur_ind] = 0
+        # If changed, update spin and cached local field
+        if new_spin != s_i:
+            delta_s = new_spin - s_i
+            cur_spin[cur_ind] = new_spin
+            # Incremental local-field update: f_k += J[k, i] * delta_s
+            for k in range(num_spin):
+                f_vec[k] += j_mat[k, cur_ind] * delta_s
 
-        if ii > mixing_time:
-            if (ii - mixing_time) % samp_gap == 0:
-                rec_sample[:, batch_count - 1] = cur_spin[:, 0].copy()
-                batch_count += 1
+        # Record sample on schedule
+        if ii == next_sample:
+            for k in range(num_spin):
+                rec_sample[k, batch_count - 1] = cur_spin[k]
+            batch_count += 1
+            next_sample += samp_gap
 
-                if batch_count == per_batch + 1:
-                    batch_count = 1
-                    rec_sample = np.ascontiguousarray(rec_sample)
-                    rec_corr += rec_sample.dot(rec_sample.T)
-                    rec_mean += np.sum(rec_sample, axis=1)
-
-    # Final processing of collected samples
-    if batch_count != 1:
-        cur_sample = rec_sample[:, :batch_count - 1]
-        cur_sample = np.ascontiguousarray(cur_sample)
-        rec_corr += cur_sample.dot(cur_sample.T)
-        rec_mean += np.sum(cur_sample, axis=1)
-
-    corr_para = rec_corr / sample_size
-    mean_para = rec_mean / sample_size
-
-    return corr_para, mean_para
+    return rec_sample
 
 
 def _gradient_one_round(kk: int,
@@ -814,7 +977,7 @@ def _gradient_one_round(kk: int,
             corr_para, mean_para = para_moments(cur_j, cur_h[:, kk])
         elif method == 'mcmc_maximum_likelihood':
             corr_para, mean_para = samp_moments(
-                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'], train_dat['mcmc_samplegap'])
+                    cur_j, cur_h[:, kk], train_dat['mcmc_samplingsz'], train_dat['mcmc_samplingmix'])
         j_grad  = corr_para - raw_data_k[0]
         h_grad  = mean_para  - raw_data_k[1].flatten()
 
@@ -1465,6 +1628,7 @@ def average_batch_control(hgrad_raw: np.ndarray,
                 hgrad[:, batch_controls_idx] = batch_mean[:, np.newaxis]
 
     return hgrad
+
 
 def select_representative_sample(raw_data: List[Tuple[np.ndarray, np.ndarray]], 
                                  num_select: int) -> List[int]:
