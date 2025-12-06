@@ -856,7 +856,8 @@ def samp_mcmc_states(j_mat: np.ndarray,
                     h_vec: np.ndarray, 
                     sample_size: int, 
                     mixing_time: int, 
-                    samp_gap: int) -> np.ndarray:
+                    samp_gap: int,
+                    seed: int = None) -> np.ndarray:
     """
     Sample states for the Markov Chain Monte Carlo (MCMC).
 
@@ -872,6 +873,8 @@ def samp_mcmc_states(j_mat: np.ndarray,
         Mixing time for the MCMC.
     samp_gap : int
         Gap between samples.
+    seed : int, optional
+        Seed for the random number generator. Default is None.
 
     Returns
     -------
@@ -891,8 +894,10 @@ def samp_mcmc_states(j_mat: np.ndarray,
     # Cast & make contiguous (Numba-safe)
     j_mat = np.ascontiguousarray(j_mat.astype(np.float64))
     # Accept both (n,) and (n,1) h_vec; flatten to 1D
-    h_vec = h_vec.reshape(h_vec.size)
-    h_vec = np.ascontiguousarray(h_vec.astype(np.float64))
+    h_vec = np.ascontiguousarray(h_vec.astype(np.float64)).reshape(- 1)
+
+    if seed is not None:
+        np.random.seed(seed)
 
     # Spins in {-1,0,1}
     cur_spin = (np.random.randint(0, 3, num_spin) - 1).astype(np.float64)
