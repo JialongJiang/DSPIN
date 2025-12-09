@@ -1359,8 +1359,9 @@ def learn_network_adam(raw_data: Any,
     pbar.close()
 
     # Retrieve parameters corresponding to the minimum gradient norm found during training
-    trace_epoch = 50 + num_epoch - counter
-    pos = num_epoch - trace_epoch + np.argmin(rec_jgrad_sum_norm[- trace_epoch: ])
+    trace_range = np.sort(np.where(rec_jgrad_sum_norm < np.inf)[0])[- 50 :]
+    pos = trace_range[np.argmin(rec_jgrad_sum_norm[trace_range])]
+
     # print(pos)
     cur_h = rec_hvec_all[pos, :, :]
     cur_j = rec_jmat_all[pos, :, :]
@@ -1425,7 +1426,7 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     rec_selfj_all = np.zeros((num_epoch, num_program))
     rec_selfh_all = np.zeros((num_epoch, num_program))
     
-    rec_grad = np.zeros(num_epoch)
+    rec_grad = np.ones(num_epoch) * np.inf
 
     m_interaction, v_interaction = np.zeros_like(cur_interaction), np.zeros_like(cur_interaction)
     m_selfj, v_selfj = np.zeros_like(cur_selfj), np.zeros_like(cur_selfj)
@@ -1544,8 +1545,9 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     pbar.close()
 
     # Retrieve parameters corresponding to the minimum gradient norm found during training
-    trace_epoch = 50 + num_epoch - counter
-    pos = num_epoch - trace_epoch + np.argmin(rec_grad[- trace_epoch: ])
+    trace_range = np.sort(np.where(rec_grad < np.inf)[0])[- 50 :]
+    pos = trace_range[np.argmin(rec_grad[trace_range])]
+
     cur_interaction = rec_interaction_all[pos, :, :]
     cur_selfj = rec_selfj_all[pos, :]
     cur_selfh = rec_selfh_all[pos, :]
