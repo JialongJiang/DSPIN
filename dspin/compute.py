@@ -852,7 +852,7 @@ def samp_moments(j_mat: np.ndarray,
 
 
 @numba.njit()
-def samp_mcmc_states(j_mat: np.ndarray, 
+def sample_states_mcmc(j_mat: np.ndarray, 
                     h_vec: np.ndarray, 
                     sample_size: int, 
                     mixing_time: int, 
