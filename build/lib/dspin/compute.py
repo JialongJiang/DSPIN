@@ -1277,7 +1277,7 @@ def learn_network_adam(raw_data: Any,
     rec_jgrad_sum_norm = np.inf * np.ones(num_epoch)
     mjj, vjj = np.zeros(cur_j.shape), np.zeros(cur_j.shape)
     mhh, vhh = np.zeros(cur_h.shape), np.zeros(cur_h.shape)
-    log_adam_grad = {name: deque(maxlen=backtrack_gap)
+    log_adam_grad = {name: deque(maxlen=backtrack_gap + 1)
                      for name in ["mjj", "vjj", "mhh", "vhh"]}
     
     apply_regularization(np.zeros((num_spin, num_spin, num_round)), np.zeros((num_spin, num_round)), cur_j, cur_h, train_dat, print_regu=True)
@@ -1327,7 +1327,6 @@ def learn_network_adam(raw_data: Any,
             pbar.set_postfix({"Network Gradient": f"{rec_jgrad_sum_norm[counter - 1]:.6f}"})
 
         # Handle backtracking
-        
         if_backtrack = False
 
         if (counter > backtrack_gap) and (rec_jgrad_sum_norm[counter - 1] > 1.5 * rec_jgrad_sum_norm[counter - 1 - backtrack_gap]):
@@ -1344,9 +1343,12 @@ def learn_network_adam(raw_data: Any,
         if if_backtrack:
             print('Backtracking at epoch %d' % counter)
             backtrack_counter += 1
+            cur_j = rec_jmat_all[counter - 1 - backtrack_gap, :, :]
+            cur_h = rec_hvec_all[counter - 1 - backtrack_gap, :, :]
+
             mjj, vjj, mhh, vhh = [log_adam_grad[key][0]
                                   for key in ['mjj', 'vjj', 'mhh', 'vhh']]
-            counter = counter - backtrack_gap
+            counter = counter - backtrack_gap + 1
             stepsz = stepsz / 4
             if backtrack_counter > backtrack_tol:
                 print(
@@ -1359,8 +1361,9 @@ def learn_network_adam(raw_data: Any,
     pbar.close()
 
     # Retrieve parameters corresponding to the minimum gradient norm found during training
-    trace_epoch = 50 + num_epoch - counter
-    pos = num_epoch - trace_epoch + np.argmin(rec_jgrad_sum_norm[- trace_epoch: ])
+    trace_range = np.sort(np.where(rec_jgrad_sum_norm < np.inf)[0])[- 50 :]
+    pos = trace_range[np.argmin(rec_jgrad_sum_norm[trace_range])]
+
     # print(pos)
     cur_h = rec_hvec_all[pos, :, :]
     cur_j = rec_jmat_all[pos, :, :]
@@ -1425,7 +1428,7 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     rec_selfj_all = np.zeros((num_epoch, num_program))
     rec_selfh_all = np.zeros((num_epoch, num_program))
     
-    rec_grad = np.zeros(num_epoch)
+    rec_grad = np.ones(num_epoch) * np.inf
 
     m_interaction, v_interaction = np.zeros_like(cur_interaction), np.zeros_like(cur_interaction)
     m_selfj, v_selfj = np.zeros_like(cur_selfj), np.zeros_like(cur_selfj)
@@ -1445,7 +1448,7 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     rec_selfj_grad = np.zeros((num_round, num_program))
     rec_selfh_grad = np.zeros((num_round, num_program))
 
-    log_adam_grad = {name: deque(maxlen=backtrack_gap)
+    log_adam_grad = {name: deque(maxlen=backtrack_gap + 1)
                      for name in ["m_interaction", "v_interaction", "m_selfj", "v_selfj", "m_selfh", "v_selfh"]}
 
     tqdm._instances.clear()
@@ -1544,8 +1547,9 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     pbar.close()
 
     # Retrieve parameters corresponding to the minimum gradient norm found during training
-    trace_epoch = 50 + num_epoch - counter
-    pos = num_epoch - trace_epoch + np.argmin(rec_grad[- trace_epoch: ])
+    trace_range = np.sort(np.where(rec_grad < np.inf)[0])[- 50 :]
+    pos = trace_range[np.argmin(rec_grad[trace_range])]
+
     cur_interaction = rec_interaction_all[pos, :, :]
     cur_selfj = rec_selfj_all[pos, :]
     cur_selfh = rec_selfh_all[pos, :]
