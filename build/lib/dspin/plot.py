@@ -22,6 +22,7 @@ from typing import List, Dict, Optional, Tuple
 import re
 
 
+cmap_hvec = mpl.colors.LinearSegmentedColormap.from_list("", ['#E84B23', '#FFFFFF', '#3285CC'])
 
 def onmf_to_csv(features, gene_name, file_path, thres=0.01, if_write_weights=False):
     """
@@ -76,9 +77,6 @@ def onmf_gene_program_info(features, gene_name, num_gene_show, fig_folder=None):
     gene_name (List[str]): Names of the genes corresponding to feature indices.
     num_gene_show (int): Number of genes to show in the plot.
     fig_folder (str): Folder where the figure will be saved.
-
-    Returns:
-    str: Path of the created figure.
     """
     thres = 0.01
     num_spin = features.shape[0]
@@ -101,8 +99,6 @@ def onmf_gene_program_info(features, gene_name, num_gene_show, fig_folder=None):
 
     if fig_folder is not None:
         plt.savefig(fig_folder + 'onmf_gene_program_info.png', dpi=300, bbox_inches='tight')
-
-    return(fig_folder + 'onmf_gene_program_info.png')
 
 
 def assign_program_position(onmf_rep_ori, umap_all, repulsion=2, if_plot=True):
@@ -209,7 +205,6 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos=None, program_name
 
     if fig_folder is not None:
         plt.savefig(fig_folder + 'gene_program_on_umap.png', dpi=300, bbox_inches='tight')    
-        return fig_folder + 'gene_program_on_umap.png'
 
 
 def visualize_program_expression(onmf_summary, spin_name, gene_matrix, onmf_rep_tri, fig_folder=None, 
@@ -226,9 +221,6 @@ def visualize_program_expression(onmf_summary, spin_name, gene_matrix, onmf_rep_
     num_gene_select (int): The number of genes to be selected for each gene program. Default is 10.
     n_clusters (int): The number of clusters for KMeans clustering. Default is 5.
     subsample (int): The number cell subsampling for visualization. Default is 10000.
-
-    Returns:
-    str: Path of the created figure.
     """
     # Extracting feature components from the ONMF summary object
     features = onmf_summary.components_
@@ -284,7 +276,6 @@ def visualize_program_expression(onmf_summary, spin_name, gene_matrix, onmf_rep_
 
     if fig_folder is not None:
         plt.savefig(fig_folder + 'gene_program_decomposition.png', bbox_inches='tight')
-        return fig_folder + 'gene_program_decomposition.png'
 
 
 def format_label(label):
@@ -357,13 +348,11 @@ def plot_network_heatmap(j_mat: np.ndarray,
     spin_order = [spin for cur_list in module_list for spin in cur_list]
     net_class_len = [len(cur_list) for cur_list in module_list]
     
-    # Create custom colormap
-    cmap_hvec = mpl.colors.LinearSegmentedColormap.from_list("", ['#E84B23', '#FFFFFF', '#3285CC'])
-    
     color_thres = np.percentile(np.abs(j_mat[j_mat != 0]), 95)
 
     # Plot heatmap
-    sc.set_figure_params(figsize=[0.18 * num_spin + 0.5, 0.18 * num_spin])
+    fig_size = np.max(4, 0.18 * num_spin)
+    sc.set_figure_params(figsize=[fig_size + 0.5, fig_size])
     plt.imshow(j_mat[:, spin_order][spin_order, :], cmap=cmap_hvec, vmin=- color_thres, vmax=color_thres)
     
     # Add module boundaries
@@ -371,7 +360,7 @@ def plot_network_heatmap(j_mat: np.ndarray,
         plt.axhline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
         plt.axvline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
     
-    fsize = 9
+    fsize = np.max(9, int(fig_size / num_spin * 50))
 
     # Set labels
     if spin_name_list is not None:
@@ -380,7 +369,10 @@ def plot_network_heatmap(j_mat: np.ndarray,
     else:
         plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=fsize)
         plt.yticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], fontsize=fsize)
-        
+    
+    plt.xlabel('Targets')
+    plt.ylabel('Regulators')
+
     plt.colorbar(fraction=0.6 / num_spin)
     plt.grid()
     
@@ -388,8 +380,6 @@ def plot_network_heatmap(j_mat: np.ndarray,
     if fig_folder is not None:
         plt.savefig(fig_folder + 'network_heatmap.png', dpi=300, bbox_inches='tight')
     
-    plt.show()
-
 
 def plot_response_heatmap(h_vec: np.ndarray, 
                        module_list: List[List[int]]=None, 
@@ -423,8 +413,6 @@ def plot_response_heatmap(h_vec: np.ndarray,
     net_class_len = [len(cur_list) for cur_list in module_list]
     sample_order = leaves_list(linkage(h_vec.T, method='ward'))
     
-    cmap_hvec = mpl.colors.LinearSegmentedColormap.from_list("", ['#E84B23', '#FFFFFF', '#3285CC'])
-    
     # Plot heatmap
     sc.set_figure_params(figsize=[0.16 * num_spin + 0.5, 0.16 * num_sample])
     plt.imshow(h_vec.T[sample_order, :][:, spin_order], cmap=cmap_hvec, vmin=- 1, vmax=1, aspect='auto')
@@ -448,8 +436,6 @@ def plot_response_heatmap(h_vec: np.ndarray,
     if fig_folder is not None:
         plt.savefig(fig_folder + 'module_heatmap.png', dpi=300, bbox_inches='tight')
     
-    plt.show()
-
 
 def create_undirected_network(j_mat, node_names, thres_strength=0.05):
 
@@ -737,7 +723,6 @@ def plot_network_diagram(j_mat: np.ndarray,
     if fig_folder is not None:
         plt.savefig(fig_folder + 'network_diagram.png', dpi=300, bbox_inches='tight')
     
-    plt.show()
 
 def plot_top_regulators(program_interactions: np.ndarray, 
                         program_index: int, 
@@ -764,7 +749,6 @@ def plot_top_regulators(program_interactions: np.ndarray,
     fig_folder : Optional[str], optional
         The folder to save the figure.
     """
-
     cur_regulators = program_interactions[:, program_index]
     if thres is None:
         thres = np.sort(np.abs(cur_regulators))[::-1][20]
@@ -790,6 +774,60 @@ def plot_top_regulators(program_interactions: np.ndarray,
         plt.title(program_name, fontsize=10)
 
     if fig_folder is not None:
-        plt.savefig(fig_folder + 'top_regulators.png')
+        plt.savefig(fig_folder + 'top_regulators_program_{program_index}.png')
 
-    plt.show()    
+
+def plot_all_regulators(program_interactions: np.ndarray, 
+                        gene_list: np.array, 
+                        program_name: Optional[str] = None, 
+                        thres: Optional[float] = 0.2,
+                        fig_folder: Optional[str] = None) -> None:
+    """
+    Plot the all regulators of all programs.
+
+    Parameters
+    ----------
+    program_interactions : np.ndarray
+        The program interactions.
+    gene_list : np.array
+        The list of genes.
+    program_name : Optional[str], optional
+        The name of the program.
+    thres : Optional[float], optional
+        The threshold for the regulators.
+    fig_folder : Optional[str], optional
+        The folder to save the figure.
+    """
+    program_interactions = program_interactions.copy()
+    program_interactions_raw = program_interactions.copy()
+    num_gene, num_program = program_interactions.shape
+
+    if thres is not None:
+        program_interactions[np.abs(program_interactions) < thres] = 0
+
+    gene_remove = np.sum(program_interactions, axis=1) == 0
+    program_interactions = program_interactions[~gene_remove, :]
+    program_interactions_raw = program_interactions_raw[~gene_remove, :]
+    gene_list = np.array(gene_list)[~gene_remove]
+
+    num_gene, num_program = program_interactions.shape
+
+    sc.set_figure_params(figsize=[0.18 * num_gene, 0.2 * num_program])
+
+    gene_order = leaves_list(linkage(program_interactions_raw))
+    program_order = leaves_list(linkage(program_interactions_raw.T))
+
+    cmap_range = np.percentile(np.abs(program_interactions[program_interactions != 0]), 95)
+
+    plt.imshow(program_interactions_raw.T[program_order, :][:, gene_order], cmap=cmap_hvec, vmin=-cmap_range, vmax=cmap_range, aspect='auto')
+
+    plt.xticks(np.arange(num_gene), np.array(gene_list)[gene_order], rotation=90, fontsize=9); 
+    plt.yticks(np.arange(num_program), np.array(program_name)[program_order], fontsize=9); 
+
+    plt.xlabel('Regulators')
+    plt.ylabel('Programs')
+
+    plt.colorbar(fraction=0.6 / num_program)
+
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'all_regulator_interactions.png')
