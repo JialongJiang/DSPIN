@@ -19,6 +19,8 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, leaves_list
 import matplotlib as mpl
 from typing import List, Dict, Optional, Tuple
+import re
+
 
 
 def onmf_to_csv(features, gene_name, file_path, thres=0.01, if_write_weights=False):
@@ -103,7 +105,7 @@ def onmf_gene_program_info(features, gene_name, num_gene_show, fig_folder=None):
     return(fig_folder + 'onmf_gene_program_info.png')
 
 
-def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
+def assign_program_position(onmf_rep_ori, umap_all, repulsion=2, if_plot=True):
     """
     Assign the position of gene programs on the UMAP plot.
 
@@ -111,7 +113,8 @@ def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
     onmf_rep_ori (numpy.ndarray): The gene or gene program representation of the transformed data.
     umap_all (numpy.ndarray): The UMAP coordinates of all cells.
     repulsion (float): The repulsion strength for the layout optimization.
-
+    if_plot (bool): Whether to plot the UMAP plot.
+    
     Returns:
     numpy.ndarray: The assigned positions of gene programs on the UMAP plot.
     """
@@ -133,22 +136,24 @@ def assign_program_position(onmf_rep_ori, umap_all, repulsion=2):
     opt_res = optimize.minimize(layout_loss_fun, program_umap_pos.flatten())
     program_umap_pos = opt_res.x.reshape(- 1, 2)
 
-    sc.set_figure_params(figsize=[4, 4])
-  
-    if umap_all.shape[0] <= 5e4:
-        plt.scatter(umap_all[:, 0], umap_all[:, 1], s=1, c='#bbbbbb', alpha=min(1, 1e4 / umap_all.shape[0]))
-    else:
-        sele_ind = np.random.choice(umap_all.shape[0], size=50000, replace=False).astype(int)
-        plt.scatter(umap_all[sele_ind, 0], umap_all[sele_ind, 1], s=1, c='#bbbbbb', alpha=0.2)
+    if if_plot:
 
-    for ii in range(num_spin):
-        plt.text(program_umap_pos[ii, 0], program_umap_pos[ii, 1], str(ii), fontsize=10)
-    plt.axis('off')
+        sc.set_figure_params(figsize=[4, 4])
+    
+        if umap_all.shape[0] <= 5e4:
+            plt.scatter(umap_all[:, 0], umap_all[:, 1], s=1, c='#bbbbbb', alpha=min(1, 1e4 / umap_all.shape[0]))
+        else:
+            sele_ind = np.random.choice(umap_all.shape[0], size=50000, replace=False).astype(int)
+            plt.scatter(umap_all[sele_ind, 0], umap_all[sele_ind, 1], s=1, c='#bbbbbb', alpha=0.2)
+
+        for ii in range(num_spin):
+            plt.text(program_umap_pos[ii, 0], program_umap_pos[ii, 1], str(ii), fontsize=10)
+        plt.axis('off')
 
     return program_umap_pos
 
 
-def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, subsample=True):
+def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos=None, program_names=None,fig_folder=None, subsample=True):
     """
     Plot gene programs on the UMAP plot.
 
@@ -156,6 +161,7 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
     onmf_rep (numpy.ndarray): The gene or gene program representation of the transformed data.
     umap_all (numpy.ndarray): The UMAP coordinates of all cells.
     program_umap_pos (numpy.ndarray): The assigned positions of gene programs on the UMAP plot.
+    program_names (List[str]): The names of gene programs.
     fig_folder (str): The folder where the output figure is saved.
     subsample (bool): Whether to subsample the data for plotting.
 
@@ -165,16 +171,29 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
 
     num_spin = onmf_rep.shape[1]
 
-    if subsample:
-        num_subsample = 20000
+    if program_umap_pos is None:
+        program_umap_pos = assign_program_position(onmf_rep, umap_all, if_plot=False)
+
+    if program_names is None:
+        program_names = [str(ii) for ii in range(num_spin)]
+
+    # Check if all program names follow the "P<number>" format
+    match_nums = [re.search(r'\d+', name) for name in program_names]
+    if all(m is not None for m in match_nums):
+        program_order = sorted(range(len(program_names)), key=lambda i: int(match_nums[i].group()))
+    else:
+        program_order = sorted(range(len(program_names)), key=lambda i: program_names[i])
+
+    num_subsample = 20000
+    if subsample & (onmf_rep.shape[0] > num_subsample):
         sub_ind = np.random.choice(onmf_rep.shape[0], num_subsample, replace=False)
         onmf_rep = onmf_rep[sub_ind, :]
         umap_all = umap_all[sub_ind, :]
 
     sc.set_figure_params(figsize=[2, 2])
     fig, grid = sc.pl._tools._panel_grid(0.2, 0.06, ncols=6, num_panels=num_spin)
-    for spin in range(num_spin):
-        ax = plt.subplot(grid[spin])
+    for ind, spin in enumerate(program_order):
+        ax = plt.subplot(grid[ind])
 
         plot_data = onmf_rep[:, spin].copy()
         plot_data /= np.percentile(plot_data, 95)
@@ -182,11 +201,11 @@ def gene_program_on_umap(onmf_rep, umap_all, program_umap_pos, fig_folder=None, 
 
         plt.scatter(umap_all[:, 0], umap_all[:, 1], c=plot_data, s=1, 
         alpha=0.5, vmax=1.2, cmap='BuPu', vmin=-0.1)
-        plt.text(program_umap_pos[spin, 0], program_umap_pos[spin, 1], str(spin), fontsize=12, path_effects=[patheffects.withStroke(linewidth=3, foreground='w')])
+        plt.text(program_umap_pos[spin, 0], program_umap_pos[spin, 1], program_names[spin], fontsize=12, path_effects=[patheffects.withStroke(linewidth=3, foreground='w')])
         ax.set_aspect('equal')
         plt.xticks([])
         plt.yticks([])
-        plt.title(spin)
+        plt.title(program_names[spin])
 
     if fig_folder is not None:
         plt.savefig(fig_folder + 'gene_program_on_umap.png', dpi=300, bbox_inches='tight')    
