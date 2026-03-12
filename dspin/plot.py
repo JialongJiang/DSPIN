@@ -319,6 +319,51 @@ def temporary_spin_name(csv_file, num_gene: int = 4):
     return spin_names_formatted
 
 
+def plot_program_heatmap(onmf_rep: np.ndarray, celltype_label: np.ndarray, program_name: str, fig_folder: Optional[str] = None) -> None:
+
+    """
+    Plot a heatmap of the program expression.
+    
+    Parameters
+    ----------
+    onmf_rep : np.ndarray
+        The program expression.
+    celltype_label : np.ndarray
+        The celltype label.
+    program_name : str
+        The program name.
+    fig_folder : str
+        The folder to save the figure.
+    """
+
+    celltype_label_list = np.unique(celltype_label)
+    num_celltype = len(celltype_label_list)
+    num_program = onmf_rep.shape[1]
+
+    average_onmf_rep = np.zeros((num_celltype, num_program))
+    for ii in range(num_celltype):
+        average_onmf_rep[ii, :] = np.mean(onmf_rep[celltype_label == celltype_label_list[ii], :], axis=0)
+
+    for jj in range(num_program):
+        average_onmf_rep[:, jj] = average_onmf_rep[:, jj] / np.average(average_onmf_rep[:, jj])
+
+    celltype_order = leaves_list(linkage(average_onmf_rep))
+    program_order = leaves_list(linkage(average_onmf_rep.T))
+
+    sc.set_figure_params(figsize=[0.24 * num_celltype, 0.24 * num_program])
+
+    plt.imshow(average_onmf_rep[celltype_order, :][:, program_order].T, cmap='Blues', vmin=0, vmax=2.5, aspect='auto')
+
+    plt.yticks(np.arange(num_program), np.array(program_name)[program_order], fontsize=10); 
+    plt.xticks(np.arange(num_celltype), np.array(celltype_label_list)[celltype_order], fontsize=10, rotation=90); 
+
+    plt.xlabel('Cell types')
+    plt.ylabel('Gene programs')
+
+    if fig_folder is not None:
+        plt.savefig(fig_folder + 'program_heatmap.png')
+
+
 def plot_network_heatmap(j_mat: np.ndarray, 
                        module_list: List[List[int]] = None, 
                        spin_name_list: Optional[List[str]] = None,
@@ -351,7 +396,7 @@ def plot_network_heatmap(j_mat: np.ndarray,
     color_thres = np.percentile(np.abs(j_mat[j_mat != 0]), 95)
 
     # Plot heatmap
-    fig_size = np.max(4, 0.18 * num_spin)
+    fig_size = np.max([3.7, 0.18 * num_spin])
     sc.set_figure_params(figsize=[fig_size + 0.5, fig_size])
     plt.imshow(j_mat[:, spin_order][spin_order, :], cmap=cmap_hvec, vmin=- color_thres, vmax=color_thres)
     
@@ -360,7 +405,7 @@ def plot_network_heatmap(j_mat: np.ndarray,
         plt.axhline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
         plt.axvline(np.sum(net_class_len[:ii]) - 0.5, color='k', linewidth=1)
     
-    fsize = np.max(9, int(fig_size / num_spin * 50))
+    fsize = np.max([9, int(fig_size / num_spin * 50)])
 
     # Set labels
     if spin_name_list is not None:
