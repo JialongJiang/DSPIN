@@ -28,7 +28,7 @@ Two demos of D-SPIN are available on Google Colab:
   [Demo1](https://colab.research.google.com/drive/1Nja8AAcP0L7Ag6DGbyn21SxGafsYX4fA?usp=sharing)
 
 - **Demo2**: reconstructs a regulatory network and response vectors using a subset of the immune dictionary dataset (Cui et al., *Nature*, 2024), where mice were treated with cytokines and lymph nodes were collected and profiled by scRNA-seq.  
-  [Demo2](https://colab.research.google.com/drive/1E8v4awQ-m4D02emG0jp6kmRDmkZ8hjjN?usp=sharing)
+  [Demo2](https://colab.research.google.com/drive/1oLECn3ystwtwfIRiSii9oe92QJ9ac5s1?usp=sharing)
 
 ## Dependencies
 
