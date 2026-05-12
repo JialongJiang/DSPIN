@@ -767,6 +767,8 @@ def plot_network_diagram(j_mat: np.ndarray,
     # Save figure if folder is provided
     if fig_folder is not None:
         plt.savefig(fig_folder + 'network_diagram.png', dpi=300, bbox_inches='tight')
+
+    plt.show()
     
 
 def plot_top_regulators(program_interactions: np.ndarray, 
