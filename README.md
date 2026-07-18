@@ -16,6 +16,14 @@ Install the Python package:
 
 The MATLAB code is available in the folder `DSPIN_matlab` and is executable after specifying paths to the saved data from the preprocessing with the Python package (see `run_with_matlab=True` below).
 
+### Optional CUDA acceleration
+
+The pseudo-likelihood network and program-regulator optimizers can also run on an NVIDIA GPU through [CuPy](https://cupy.dev/). Install a CuPy wheel compatible with the CUDA runtime on the target system, for example:
+
+`pip install dspin[cuda12]`
+
+The GPU backend uses `float64` and reproduces the native Python optimizer by default. It currently supports pseudo-likelihood inference only.
+
 ## Demos
 
 A tutorial intended for an invited book chapter is available at bioRxiv:
@@ -94,6 +102,22 @@ model.response_relative_to_control(
 )
 ```
 
+To use the CUDA backend, select `backend='cupy'` and provide optional GPU settings through `params`:
+
+```python
+model.network_inference(
+    sample_id_key='sample_id',
+    method='pseudo_likelihood',
+    directed=True,
+    backend='cupy',
+    params={
+        'cupy_device': 0,
+        'cupy_dtype': 'float64',
+        'cupy_chunk_cells': 'auto',
+    },
+)
+```
+
 **Results saved to `model`:**
 - `model.network` – regulatory weights **J**
 - `model.responses` – responses **h** for each condition
@@ -152,7 +176,18 @@ Given a program-level model (`model_program`) and a gene-level model (`model_gen
 model_gene.program_regulator_discovery(
     model_program.program_representation,
     sample_id_key='sample_id',
-    params={'stepsz': 0.02, 'lam_l1_interaction': 0.01}
+    params={'stepsz': 0.02, 'lambda_l1_interaction': 0.01}
+)
+```
+
+Use `backend='cupy'` here to accelerate program-regulator discovery on CUDA:
+
+```python
+model_gene.program_regulator_discovery(
+    model_program.program_representation,
+    sample_id_key='sample_id',
+    backend='cupy',
+    params={'cupy_device': 0, 'cupy_dtype': 'float64'},
 )
 ```
 

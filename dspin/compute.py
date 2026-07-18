@@ -1411,7 +1411,8 @@ def learn_program_regulators(gene_states: List[np.ndarray],
         train_dat.get(key, None) for key in [
             "backtrack_gap", "backtrack_tol"])
 
-    lambda_l1_j, lambda_l2_j = (train_dat.get(key, 0) for key in ["lambda_l1_j", "lambda_l2_j"])
+    lambda_l1_j = train_dat.get("lambda_l1_interaction", train_dat.get("lambda_l1_j", 0))
+    lambda_l2_j = train_dat.get("lambda_l2_interaction", train_dat.get("lambda_l2_j", 0))
 
     # Initialize parameters (using zeros)
     cur_interaction = np.zeros((num_gene, num_program))

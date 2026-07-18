@@ -16,6 +16,7 @@ from .compute import (
     summary_components,
     compute_relative_responses
 )
+from .gpu import learn_network_cupy, learn_program_regulators_cupy
 from abc import ABC, abstractmethod
 import numpy as np
 import matplotlib.pyplot as plt
@@ -220,9 +221,10 @@ class AbstractDSPIN(ABC):
         num_spin = self.num_spin
         raw_data = self._raw_data
 
-        if self.sample_list_ordered is not None:
+        sample_list_ordered = getattr(self, "sample_list_ordered", None)
+        if sample_list_ordered is not None:
             sample_list_ordered_ind = [list(self._samp_list).index(samp)
-                                for samp in self.sample_list_ordered]
+                                for samp in sample_list_ordered]
             self._samp_list = self._samp_list[sample_list_ordered_ind]
             raw_data = raw_data[sample_list_ordered_ind]
             self._raw_data = raw_data
@@ -265,7 +267,8 @@ class AbstractDSPIN(ABC):
                           perturb_matrix: np.ndarray = None,
                           if_control_key: str = 'if_control',
                           batch_key: str = 'batch',
-                          run_with_matlab: bool = False) -> None:
+                          run_with_matlab: bool = False,
+                          backend: str = 'python') -> None:
         """
         Perform network inference using a specified method and parameters.
 
@@ -291,9 +294,22 @@ class AbstractDSPIN(ABC):
             Column name in `adata.obs` specifying batch assignment for each sample. Default is 'batch'.
         run_with_matlab : bool, optional
             If True, prepares data for MATLAB execution instead of running inference in Python. Default is False.
+        backend : str, optional
+            Network inference backend. Use 'python' for the original NumPy/Numba implementation,
+            'cupy' for optional CUDA GPU acceleration, or 'matlab' to save MATLAB input.
+            ``run_with_matlab=True`` is preserved for backwards compatibility and is equivalent to
+            ``backend='matlab'``.
+            The CuPy backend matches native Python optimizer semantics by default. Set
+            ``params={'cupy_optimizer_semantics': 'matlab'}`` to reproduce the earlier
+            sample-weighted CuPy/MATLAB behavior.
         """
 
         self.sample_id_key = sample_id_key
+        if run_with_matlab:
+            backend = 'matlab'
+        backend = backend.lower()
+        if backend not in ['python', 'cupy', 'matlab']:
+            raise ValueError("backend must be one of 'python', 'cupy', or 'matlab'.")
 
         if method not in [
             'maximum_likelihood',
@@ -354,15 +370,31 @@ class AbstractDSPIN(ABC):
             train_dat['lambda_l2_h_rela_prior'] = 0.5
 
         train_dat['directed'] = directed
+        train_dat['method'] = method
         if params is not None:
             train_dat.update(params)
 
-        if run_with_matlab:
+        if backend == 'matlab':
 
             file_path = self.save_path + 'raw_data.mat'
-            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list, 
+            savemat(file_path, {'raw_data': self._raw_data, 'sample_list': self._samp_list,
             'method': method, 'directed': directed, **train_dat})
             print("Data saved to {}. Please run the network inference in MATLAB".format(file_path))
+
+        elif backend == 'cupy':
+            if method != 'pseudo_likelihood':
+                raise ValueError("The CuPy backend currently supports only pseudo_likelihood network inference.")
+            cur_j, cur_h, train_log = learn_network_cupy(
+                self.raw_data,
+                train_dat,
+                device=train_dat.get('cupy_device', 0),
+                dtype=train_dat.get('cupy_dtype', 'float64'),
+                chunk_cells=train_dat.get('cupy_chunk_cells', 'auto'),
+                optimizer_semantics=train_dat.get('cupy_optimizer_semantics', 'python'),
+            )
+            self._network = cur_j
+            self._responses = cur_h
+            self.train_log = train_log
 
         else:
             cur_j, cur_h, train_log = learn_network_adam(self.raw_data, method, train_dat)
@@ -434,9 +466,9 @@ class GeneDSPIN(AbstractDSPIN):
         print("GeneDSPIN initialized.")
 
         if issparse(adata.X):
-            self._onmf_rep_ori = adata.X.toarray()
+            self._onmf_rep_ori = np.asarray(adata.X.toarray(), dtype=np.float64)
         else:
-            self._onmf_rep_ori = adata.X
+            self._onmf_rep_ori = np.asarray(adata.X, dtype=np.float64)
 
         gene_skew = np.zeros(num_spin)
 
@@ -467,10 +499,11 @@ class GeneDSPIN(AbstractDSPIN):
             self.discretize(clip_percentile=dparams['clip_percentile'], 
                             num_init=dparams['num_init'])
 
-    def program_regulator_discovery(self, 
-                                    program_representation: np.ndarray, 
+    def program_regulator_discovery(self,
+                                    program_representation: np.ndarray,
                                     sample_id_key: str = 'sample_id',
-                                    params: dict = None):
+                                    params: dict = None,
+                                    backend: str = 'python'):
         """
         Discover regulators of given gene programs using regression.
 
@@ -482,6 +515,9 @@ class GeneDSPIN(AbstractDSPIN):
             Column name in `adata.obs` specifying sample identifiers. Default is 'sample_id'.
         params : dict, optional
             Additional parameters for regression. Default is None.
+        backend : str, optional
+            Program-regulator optimization backend. Use 'python' for the original NumPy
+            implementation or 'cupy' for optional CUDA GPU acceleration.
         """
 
         program_states, samp_list = sample_states(self.adata.obs[sample_id_key], program_representation)
@@ -499,8 +535,22 @@ class GeneDSPIN(AbstractDSPIN):
 
         if params is not None:
             train_dat.update(params)
+        backend = train_dat.pop('backend', backend).lower()
+        if backend not in ['python', 'cupy']:
+            raise ValueError("backend must be either 'python' or 'cupy'.")
 
-        cur_interaction, cur_selfj, cur_selfh = learn_program_regulators(gene_states, program_states, train_dat)
+        if backend == 'cupy':
+            cur_interaction, cur_selfj, cur_selfh, train_log = learn_program_regulators_cupy(
+                gene_states,
+                program_states,
+                train_dat,
+                device=train_dat.get('cupy_device', 0),
+                dtype=train_dat.get('cupy_dtype', 'float64'),
+                chunk_cells=train_dat.get('cupy_chunk_cells', 'auto'),
+            )
+            self.program_regulator_train_log = train_log
+        else:
+            cur_interaction, cur_selfj, cur_selfh = learn_program_regulators(gene_states, program_states, train_dat)
 
         self.program_interactions = cur_interaction
         self.program_activities = cur_selfh

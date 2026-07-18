@@ -10,6 +10,10 @@ install_requires = [
     "leidenalg",
 ]
 
+extras_require = {
+    "cuda12": ["cupy-cuda12x"],
+}
+
 # # Replace with your package's test requirements
 # test_requires = [
 #     # Example: "pytest", "pytest-cov"
@@ -36,6 +40,7 @@ setup(
     license="Apache-2.0 license",
     python_requires=">=3.6",  # Adjust depending on your compatibility
     install_requires=install_requires,
+    extras_require=extras_require,
     # extras_require={"test": test_requires, "doc": doc_requires},
     # Adjust if you're using a different test suite
     test_suite="nose2.collector.collector",
