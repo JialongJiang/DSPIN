@@ -213,7 +213,7 @@ dp.plot_response_heatmap(
 </div>
 <br>
 <div align="center">
-  <img src="figure/readme/Figure3_program_network_20250928.png" width="600">
+  <img src="figure/readme/Figure3_program_network_20261009.png" width="600">
 </div>
 
 <div align="left">
