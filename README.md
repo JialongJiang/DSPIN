@@ -152,7 +152,7 @@ Given a program-level model (`model_program`) and a gene-level model (`model_gen
 model_gene.program_regulator_discovery(
     model_program.program_representation,
     sample_id_key='sample_id',
-    params={'stepsz': 0.02, 'lam_l1_interaction': 0.01}
+    params={'stepsz': 0.02, 'lambda_l1_interaction': 0.001}
 )
 ```
 

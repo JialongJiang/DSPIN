@@ -874,7 +874,10 @@ def plot_all_regulators(program_interactions: np.ndarray,
     plt.imshow(program_interactions_raw.T[program_order, :][:, gene_order], cmap=cmap_hvec, vmin=-cmap_range, vmax=cmap_range, aspect='auto')
 
     plt.xticks(np.arange(num_gene), np.array(gene_list)[gene_order], rotation=90, fontsize=9); 
-    plt.yticks(np.arange(num_program), np.array(program_name)[program_order], fontsize=9); 
+    if program_name is not None:
+        plt.yticks(np.arange(num_program), np.array(program_name)[program_order], fontsize=9); 
+    else:
+        plt.yticks(np.arange(num_program), [f'P{program + 1}' for program in program_order], fontsize=9)
 
     plt.xlabel('Regulators')
     plt.ylabel('Programs')
