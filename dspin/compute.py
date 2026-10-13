@@ -413,6 +413,8 @@ def subsample_normalize_gene_matrix(gene_matrix: np.ndarray,
         if method is None:
             gene_matrix_balanced = gene_matrix[np.random.choice(
                 num_cell, num_subsample, replace=False), :]
+            if issparse(gene_matrix_balanced):
+                gene_matrix_balanced = gene_matrix_balanced.toarray()
         else:
             cluster_list, cluster_count = np.unique(cluster_label, return_counts=True)
 
@@ -1343,8 +1345,8 @@ def learn_network_adam(raw_data: Any,
         if if_backtrack:
             print('Backtracking at epoch %d' % counter)
             backtrack_counter += 1
-            cur_j = rec_jmat_all[counter - 1 - backtrack_gap, :, :]
-            cur_h = rec_hvec_all[counter - 1 - backtrack_gap, :, :]
+            cur_j = rec_jmat_all[counter - 1 - backtrack_gap, :, :].copy()
+            cur_h = rec_hvec_all[counter - 1 - backtrack_gap, :, :].copy()
 
             mjj, vjj, mhh, vhh = [log_adam_grad[key][0]
                                   for key in ['mjj', 'vjj', 'mhh', 'vhh']]

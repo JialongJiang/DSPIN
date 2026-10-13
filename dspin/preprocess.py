@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 from scipy.optimize import curve_fit
+from scipy.sparse import issparse
 from sklearn.linear_model import LinearRegression
 from typing import Optional
 
@@ -57,7 +58,7 @@ def select_highly_variable_genes(
     for start in range(0, adata.n_obs, batch_size):
         block = adata.X[start:start + batch_size]
         sum_x += np.asarray(block.sum(axis=0)).ravel()
-        sum_x_squared += np.asarray(block.power(2).sum(axis=0)).ravel()
+        sum_x_squared += np.asarray((block.power(2) if issparse(block) else np.square(block)).sum(axis=0)).ravel()
 
     data_mean = sum_x / adata.n_obs
     data_var = sum_x_squared / adata.n_obs - data_mean ** 2

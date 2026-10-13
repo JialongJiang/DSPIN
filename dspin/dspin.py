@@ -168,7 +168,10 @@ class AbstractDSPIN(ABC):
 
         if clip_percentile < 100:
             for ii in range(onmf_rep_ori.shape[1]):
-                onmf_rep_ori[:, ii] = onmf_rep_ori[:, ii] / np.percentile(onmf_rep_ori[:, ii], clip_percentile)
+                clip_value = np.percentile(onmf_rep_ori[:, ii], clip_percentile)
+                if clip_value == 0:
+                    clip_value = np.max(onmf_rep_ori[:, ii])
+                onmf_rep_ori[:, ii] = onmf_rep_ori[:, ii] / clip_value
             onmf_rep_ori = onmf_rep_ori.clip(0, 1)
 
         onmf_rep_tri = onmf_discretize(onmf_rep_ori, num_init, fig_folder)
@@ -491,7 +494,7 @@ class GeneDSPIN(AbstractDSPIN):
         train_dat = {
             'num_epoch': 500,
             'stepsz': 0.01,
-            'lambda_l1_interaction': 0.01,
+            'lambda_l1_interaction': 0.001,
             'rec_gap': 10,
             'backtrack_gap': 40,
             'backtrack_tol': 5
@@ -791,6 +794,9 @@ class ProgramDSPIN(AbstractDSPIN):
 
             self.discretize(clip_percentile=dparams['clip_percentile'],
                             num_init=dparams['num_init'])
+
+        if mode == 'compute_only':
+            return
 
         num_display_gene = 5
         gene_pd = pd.read_csv(self.gene_program_csv, index_col=None)
