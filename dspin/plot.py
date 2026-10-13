@@ -412,8 +412,8 @@ def plot_network_heatmap(j_mat: np.ndarray,
         plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=fsize)
         plt.yticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], fontsize=fsize)
     else:
-        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=fsize)
-        plt.yticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], fontsize=fsize)
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], rotation=90, fontsize=fsize)
+        plt.yticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], fontsize=fsize)
     
     plt.xlabel('Targets')
     plt.ylabel('Regulators')
@@ -470,7 +470,7 @@ def plot_response_heatmap(h_vec: np.ndarray,
     if spin_name_list is not None:
         plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=8)
     else:
-        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=8)
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], rotation=90, fontsize=8)
     
     plt.yticks(np.arange(len(sample_order)), np.array(sample_list)[sample_order], fontsize=8)
         
@@ -484,6 +484,7 @@ def plot_response_heatmap(h_vec: np.ndarray,
 
 def create_undirected_network(j_mat, node_names, thres_strength=0.05):
 
+    j_mat = j_mat.copy()
     np.fill_diagonal(j_mat, 0)
         
     # Filter weak connections
@@ -500,6 +501,7 @@ def create_undirected_network(j_mat, node_names, thres_strength=0.05):
 
 def create_directed_network(j_mat, node_names,thres_strength=0.05, thres_direction=0.05):
 
+    j_mat = j_mat.copy()
     np.fill_diagonal(j_mat, 0)
 
     num_spin = j_mat.shape[0]
@@ -724,7 +726,7 @@ def plot_network_diagram(j_mat: np.ndarray,
     if spin_name_list_short is not None:
         label = {ii: spin_name_list_short[ii] for ii in range(num_spin)}
     else:
-        label = {ii: f'P{ii}' for ii in range(num_spin)}
+        label = {ii: f'P{ii + 1}' for ii in range(num_spin)}
     
     # Plot network
     fig_size = 4 * num_spin ** 0.25

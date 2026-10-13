@@ -802,7 +802,7 @@ class ProgramDSPIN(AbstractDSPIN):
             sub_list_filtered = [gene for gene in sub_list if str(gene) != 'nan']
             top_gene_list_filtered.append(sub_list_filtered)
 
-        program_names = [f'P{ii}-' + ','.join(top_gene_list_filtered[ii]) for ii in range(num_spin)]
+        program_names = [f'P{ii + 1}-' + ','.join(top_gene_list_filtered[ii]) for ii in range(num_spin)]
         self.name_list = program_names
         self.name_list_short = [name.split('-')[0] for name in program_names]
 
