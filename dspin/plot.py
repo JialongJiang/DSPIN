@@ -472,7 +472,10 @@ def plot_response_heatmap(h_vec: np.ndarray,
     else:
         plt.xticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], rotation=90, fontsize=8)
     
-    plt.yticks(np.arange(len(sample_order)), np.array(sample_list)[sample_order], fontsize=8)
+    if sample_list is not None:
+        plt.yticks(np.arange(len(sample_order)), np.array(sample_list)[sample_order], fontsize=8)
+    else:
+        plt.yticks(np.arange(len(sample_order)), [f'S{sample + 1}' for sample in sample_order], fontsize=8)
         
     plt.colorbar(fraction=1 / num_spin)
     plt.grid()
@@ -800,10 +803,10 @@ def plot_top_regulators(program_interactions: np.ndarray,
     """
     cur_regulators = program_interactions[:, program_index]
     if thres is None:
-        thres = np.sort(np.abs(cur_regulators))[::-1][20]
+        thres = np.sort(np.abs(cur_regulators))[::-1][min(20, len(cur_regulators) - 1)]
 
-    num_gene_show_pos = np.sum(cur_regulators >= thres)
-    num_gene_show_neg = np.sum(cur_regulators <= -thres)
+    num_gene_show_pos = np.sum((cur_regulators >= thres) & (cur_regulators > 0))
+    num_gene_show_neg = np.sum((cur_regulators <= -thres) & (cur_regulators < 0))
     num_gene_show = num_gene_show_pos + num_gene_show_neg
 
     plot_ind_pos = np.argsort(cur_regulators)[::-1][:num_gene_show_pos]
@@ -823,7 +826,7 @@ def plot_top_regulators(program_interactions: np.ndarray,
         plt.title(program_name, fontsize=10)
 
     if fig_folder is not None:
-        plt.savefig(fig_folder + 'top_regulators_program_{program_index}.png')
+        plt.savefig(fig_folder + f'top_regulators_program_{program_index}.png')
 
 
 def plot_all_regulators(program_interactions: np.ndarray, 
@@ -854,7 +857,7 @@ def plot_all_regulators(program_interactions: np.ndarray,
     if thres is not None:
         program_interactions[np.abs(program_interactions) < thres] = 0
 
-    gene_remove = np.sum(program_interactions, axis=1) == 0
+    gene_remove = np.sum(np.abs(program_interactions), axis=1) == 0
     program_interactions = program_interactions[~gene_remove, :]
     program_interactions_raw = program_interactions_raw[~gene_remove, :]
     gene_list = np.array(gene_list)[~gene_remove]

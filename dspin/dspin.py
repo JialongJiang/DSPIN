@@ -467,6 +467,7 @@ class GeneDSPIN(AbstractDSPIN):
             if dparams['clip_percentile'] < 100:
                 print(f"Input gene expression seem to be heavy-tailed. Using {dparams['clip_percentile']} percentile for clipping before discretization.")
 
+            np.random.seed(0)
             self.discretize(clip_percentile=dparams['clip_percentile'], 
                             num_init=dparams['num_init'])
 

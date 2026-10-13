@@ -81,11 +81,11 @@ model.network_inference(
     method='pseudo_likelihood',
     directed=True,
     # optional priors / constraints:
-    # sample_list=None,
-    # perturb_matrix=None,   # shape: (n_samples, n_genes)
+    # sample_list_ordered=None,
+    # perturb_matrix=None,   # shape: (n_genes, n_samples)
     # prior_network=None,    # binary matrix of likely edges (e.g., motif/ATAC prior)
     run_with_matlab=False,
-    params={'stepsz': 0.05, 'lam_l1_j': 0.01}
+    params={'stepsz': 0.05, 'lambda_l1_j': 0.01}
 )
 model.response_relative_to_control(
     sample_id_key='sample_id',
