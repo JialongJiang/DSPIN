@@ -221,7 +221,7 @@ dp.plot_response_heatmap(
 (A) Diagram of D-SPIN-inferred network model on gene programs. The network is partitioned into 4 modules, each associated with a T cell type in the population.
 (B) Heatmap of the program response of each cytokine. Clustering of the response partitions the cytokines into 3 major categories. 
 (C) Diagram of the core subnetwork of the D-SPIN-inferred gene network model. The node sizes scale with the number of identified interactions. The network is partitioned into 4 modules, each primarily composed of genes that have elevated expression in one specific T cell type.
-(D) Interaction diagram for the subnetwork of IFN-&alpha;1/IFN-&beta; and IFN-&gamma; acting on the program P18-IFN-&gamma; response. The D-SPIN model shows that Type I and Type II interferons have different effectors to activate the program.
+(D) Interaction diagram for the subnetwork of IFN-&alpha;1/IFN-&beta; and IFN-&gamma; acting on the program P17-IFN-&gamma; response. The D-SPIN model shows that Type I and Type II interferons have different effectors to activate the program.
 </div>
 
 ## References

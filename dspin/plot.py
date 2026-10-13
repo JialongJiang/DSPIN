@@ -374,7 +374,9 @@ def plot_network_heatmap(j_mat: np.ndarray,
     Parameters
     ----------
     j_mat : np.ndarray
-        The network adjacency matrix.
+        The network adjacency matrix, with rows as regulators and columns as targets (e.g., nx.to_numpy_array
+        of the graph from create_directed_network). model.network is stored as [target, regulator], so pass
+        model.network.T for a directed network.
     modules : List[List[int]]
         List of modules, where each module is a list of node indices.
     spin_name_list : List[str], optional
@@ -690,7 +692,9 @@ def plot_network_diagram(j_mat: np.ndarray,
     Parameters
     ----------
     j_mat : np.ndarray
-        The network adjacency matrix.
+        The network adjacency matrix, with rows as regulators and columns as targets (e.g., nx.to_numpy_array
+        of the graph from create_directed_network). model.network is stored as [target, regulator], so pass
+        model.network.T for a directed network.
     modules : List[List[int]]
         List of modules, where each module is a list of node indices.
     directed : bool, optional

@@ -1431,6 +1431,7 @@ def learn_program_regulators(gene_states: List[np.ndarray],
     rec_selfh_all = np.zeros((num_epoch, num_program))
     
     rec_grad = np.ones(num_epoch) * np.inf
+    rec_grad_data = np.ones(num_epoch) * np.inf
 
     m_interaction, v_interaction = np.zeros_like(cur_interaction), np.zeros_like(cur_interaction)
     m_selfj, v_selfj = np.zeros_like(cur_selfj), np.zeros_like(cur_selfj)
@@ -1494,6 +1495,8 @@ def learn_program_regulators(gene_states: List[np.ndarray],
         selfj_grad = - np.sum(rec_selfj_grad * samp_weight[:, None], axis=0)
         selfh_grad = - np.sum(rec_selfh_grad * samp_weight[:, None], axis=0)
         
+        # Data-gradient norm for backtracking; the annealed L1 term grows by design and would trigger it
+        rec_grad_data[counter - 1] = np.linalg.norm(interaction_grad)
         if lambda_l1_j > 0:
             interaction_grad += lambda_l1_j * (cur_interaction / l1_base).clip(- 1, 1)
         if lambda_l2_j > 0:
@@ -1524,12 +1527,12 @@ def learn_program_regulators(gene_states: List[np.ndarray],
             pbar.set_postfix({"Network Gradient": f"{rec_grad[counter - 1]:.6f}"})
 
         if_backtrack = False
-        if (counter > backtrack_gap) and (rec_grad[counter - 1] > 1.5 * rec_grad[counter - 1 - backtrack_gap]):
+        if (counter > backtrack_gap) and (rec_grad_data[counter - 1] > 1.5 * rec_grad_data[counter - 1 - backtrack_gap]):
             if_backtrack = True
             
         if (counter > 2 * backtrack_gap) and (counter % backtrack_gap == 0):
-            est_cur_grad = rec_grad[counter - 1 - backtrack_gap: counter - 1].mean()
-            est_prev_grad = rec_grad[counter - 1 - 2 * backtrack_gap: counter - 1 - backtrack_gap].mean()
+            est_cur_grad = rec_grad_data[counter - 1 - backtrack_gap: counter - 1].mean()
+            est_prev_grad = rec_grad_data[counter - 1 - 2 * backtrack_gap: counter - 1 - backtrack_gap].mean()
             
             if est_cur_grad > 1.05 * est_prev_grad:
                 if_backtrack = True
@@ -1537,8 +1540,11 @@ def learn_program_regulators(gene_states: List[np.ndarray],
         if if_backtrack:
             print('Backtracking at epoch %d' % counter)
             backtrack_counter += 1
+            cur_interaction = rec_interaction_all[counter - 1 - backtrack_gap, :, :].copy()
+            cur_selfj = rec_selfj_all[counter - 1 - backtrack_gap, :].copy()
+            cur_selfh = rec_selfh_all[counter - 1 - backtrack_gap, :].copy()
             m_interaction, v_interaction, m_selfj, v_selfj, m_selfh, v_selfh = [log_adam_grad[key][0] for key in ["m_interaction", "v_interaction", "m_selfj", "v_selfj", "m_selfh", "v_selfh"]]
-            counter = counter - backtrack_gap
+            counter = counter - backtrack_gap + 1
             stepsz = stepsz / 4
             if backtrack_counter > backtrack_tol:
                 print(f'Backtracking more than {backtrack_tol} times, stop training.')
