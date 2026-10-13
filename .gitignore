@@ -1,2 +1,6 @@
 large_data/*
 __pycache__/
+build/
+dist/
+dspin.egg-info/
+.DS_Store
