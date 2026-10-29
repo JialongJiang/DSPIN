@@ -81,11 +81,11 @@ model.network_inference(
     method='pseudo_likelihood',
     directed=True,
     # optional priors / constraints:
-    # sample_list=None,
-    # perturb_matrix=None,   # shape: (n_samples, n_genes)
+    # sample_list_ordered=None,
+    # perturb_matrix=None,   # shape: (n_genes, n_samples)
     # prior_network=None,    # binary matrix of likely edges (e.g., motif/ATAC prior)
     run_with_matlab=False,
-    params={'stepsz': 0.05, 'lam_l1_j': 0.01}
+    params={'stepsz': 0.05, 'lambda_l1_j': 0.01}
 )
 model.response_relative_to_control(
     sample_id_key='sample_id',
@@ -152,7 +152,7 @@ Given a program-level model (`model_program`) and a gene-level model (`model_gen
 model_gene.program_regulator_discovery(
     model_program.program_representation,
     sample_id_key='sample_id',
-    params={'stepsz': 0.02, 'lam_l1_interaction': 0.01}
+    params={'stepsz': 0.02, 'lambda_l1_interaction': 0.001}
 )
 ```
 
@@ -213,7 +213,7 @@ dp.plot_response_heatmap(
 </div>
 <br>
 <div align="center">
-  <img src="figure/readme/Figure3_program_network_20250928.png" width="600">
+  <img src="figure/readme/Figure3_program_network_20261009.png" width="600">
 </div>
 
 <div align="left">
@@ -221,7 +221,7 @@ dp.plot_response_heatmap(
 (A) Diagram of D-SPIN-inferred network model on gene programs. The network is partitioned into 4 modules, each associated with a T cell type in the population.
 (B) Heatmap of the program response of each cytokine. Clustering of the response partitions the cytokines into 3 major categories. 
 (C) Diagram of the core subnetwork of the D-SPIN-inferred gene network model. The node sizes scale with the number of identified interactions. The network is partitioned into 4 modules, each primarily composed of genes that have elevated expression in one specific T cell type.
-(D) Interaction diagram for the subnetwork of IFN-&alpha;1/IFN-&beta; and IFN-&gamma; acting on the program P18-IFN-&gamma; response. The D-SPIN model shows that Type I and Type II interferons have different effectors to activate the program.
+(D) Interaction diagram for the subnetwork of IFN-&alpha;1/IFN-&beta; and IFN-&gamma; acting on the program P17-IFN-&gamma; response. The D-SPIN model shows that Type I and Type II interferons have different effectors to activate the program.
 </div>
 
 ## References

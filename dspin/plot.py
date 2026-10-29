@@ -374,7 +374,9 @@ def plot_network_heatmap(j_mat: np.ndarray,
     Parameters
     ----------
     j_mat : np.ndarray
-        The network adjacency matrix.
+        The network adjacency matrix, with rows as regulators and columns as targets (e.g., nx.to_numpy_array
+        of the graph from create_directed_network). model.network is stored as [target, regulator], so pass
+        model.network.T for a directed network.
     modules : List[List[int]]
         List of modules, where each module is a list of node indices.
     spin_name_list : List[str], optional
@@ -412,8 +414,8 @@ def plot_network_heatmap(j_mat: np.ndarray,
         plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=fsize)
         plt.yticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], fontsize=fsize)
     else:
-        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=fsize)
-        plt.yticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], fontsize=fsize)
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], rotation=90, fontsize=fsize)
+        plt.yticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], fontsize=fsize)
     
     plt.xlabel('Targets')
     plt.ylabel('Regulators')
@@ -470,9 +472,12 @@ def plot_response_heatmap(h_vec: np.ndarray,
     if spin_name_list is not None:
         plt.xticks(np.arange(len(spin_order)), np.array(spin_name_list)[spin_order], rotation=90, fontsize=8)
     else:
-        plt.xticks(np.arange(len(spin_order)), [f'P{spin}' for spin in spin_order], rotation=90, fontsize=8)
+        plt.xticks(np.arange(len(spin_order)), [f'P{spin + 1}' for spin in spin_order], rotation=90, fontsize=8)
     
-    plt.yticks(np.arange(len(sample_order)), np.array(sample_list)[sample_order], fontsize=8)
+    if sample_list is not None:
+        plt.yticks(np.arange(len(sample_order)), np.array(sample_list)[sample_order], fontsize=8)
+    else:
+        plt.yticks(np.arange(len(sample_order)), [f'S{sample + 1}' for sample in sample_order], fontsize=8)
         
     plt.colorbar(fraction=1 / num_spin)
     plt.grid()
@@ -484,6 +489,7 @@ def plot_response_heatmap(h_vec: np.ndarray,
 
 def create_undirected_network(j_mat, node_names, thres_strength=0.05):
 
+    j_mat = j_mat.copy()
     np.fill_diagonal(j_mat, 0)
         
     # Filter weak connections
@@ -500,6 +506,7 @@ def create_undirected_network(j_mat, node_names, thres_strength=0.05):
 
 def create_directed_network(j_mat, node_names,thres_strength=0.05, thres_direction=0.05):
 
+    j_mat = j_mat.copy()
     np.fill_diagonal(j_mat, 0)
 
     num_spin = j_mat.shape[0]
@@ -685,7 +692,9 @@ def plot_network_diagram(j_mat: np.ndarray,
     Parameters
     ----------
     j_mat : np.ndarray
-        The network adjacency matrix.
+        The network adjacency matrix, with rows as regulators and columns as targets (e.g., nx.to_numpy_array
+        of the graph from create_directed_network). model.network is stored as [target, regulator], so pass
+        model.network.T for a directed network.
     modules : List[List[int]]
         List of modules, where each module is a list of node indices.
     directed : bool, optional
@@ -724,7 +733,7 @@ def plot_network_diagram(j_mat: np.ndarray,
     if spin_name_list_short is not None:
         label = {ii: spin_name_list_short[ii] for ii in range(num_spin)}
     else:
-        label = {ii: f'P{ii}' for ii in range(num_spin)}
+        label = {ii: f'P{ii + 1}' for ii in range(num_spin)}
     
     # Plot network
     fig_size = 4 * num_spin ** 0.25
@@ -798,10 +807,10 @@ def plot_top_regulators(program_interactions: np.ndarray,
     """
     cur_regulators = program_interactions[:, program_index]
     if thres is None:
-        thres = np.sort(np.abs(cur_regulators))[::-1][20]
+        thres = np.sort(np.abs(cur_regulators))[::-1][min(20, len(cur_regulators) - 1)]
 
-    num_gene_show_pos = np.sum(cur_regulators >= thres)
-    num_gene_show_neg = np.sum(cur_regulators <= -thres)
+    num_gene_show_pos = np.sum((cur_regulators >= thres) & (cur_regulators > 0))
+    num_gene_show_neg = np.sum((cur_regulators <= -thres) & (cur_regulators < 0))
     num_gene_show = num_gene_show_pos + num_gene_show_neg
 
     plot_ind_pos = np.argsort(cur_regulators)[::-1][:num_gene_show_pos]
@@ -821,7 +830,7 @@ def plot_top_regulators(program_interactions: np.ndarray,
         plt.title(program_name, fontsize=10)
 
     if fig_folder is not None:
-        plt.savefig(fig_folder + 'top_regulators_program_{program_index}.png')
+        plt.savefig(fig_folder + f'top_regulators_program_{program_index}.png')
 
 
 def plot_all_regulators(program_interactions: np.ndarray, 
@@ -852,7 +861,7 @@ def plot_all_regulators(program_interactions: np.ndarray,
     if thres is not None:
         program_interactions[np.abs(program_interactions) < thres] = 0
 
-    gene_remove = np.sum(program_interactions, axis=1) == 0
+    gene_remove = np.sum(np.abs(program_interactions), axis=1) == 0
     program_interactions = program_interactions[~gene_remove, :]
     program_interactions_raw = program_interactions_raw[~gene_remove, :]
     gene_list = np.array(gene_list)[~gene_remove]
@@ -869,7 +878,10 @@ def plot_all_regulators(program_interactions: np.ndarray,
     plt.imshow(program_interactions_raw.T[program_order, :][:, gene_order], cmap=cmap_hvec, vmin=-cmap_range, vmax=cmap_range, aspect='auto')
 
     plt.xticks(np.arange(num_gene), np.array(gene_list)[gene_order], rotation=90, fontsize=9); 
-    plt.yticks(np.arange(num_program), np.array(program_name)[program_order], fontsize=9); 
+    if program_name is not None:
+        plt.yticks(np.arange(num_program), np.array(program_name)[program_order], fontsize=9); 
+    else:
+        plt.yticks(np.arange(num_program), [f'P{program + 1}' for program in program_order], fontsize=9)
 
     plt.xlabel('Regulators')
     plt.ylabel('Programs')
