@@ -852,6 +852,7 @@ class DSPIN(object):
             warnings.warn("Negative expression detected. Expect normalized log-transformed data.")
 
         # Filtering genes based on the filter_threshold.
+        adata = adata.copy()
         sc.pp.filter_genes(adata, min_cells=adata.shape[0] * filter_threshold)
         print(
             '{} genes have expression in more than {} of the cells'.format(
