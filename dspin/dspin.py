@@ -265,7 +265,7 @@ class AbstractDSPIN(ABC):
                           params: dict = None,
                           sample_list_ordered: List[str] = None,
                           prior_network: np.ndarray = None,
-                          perturb_matrix: np.ndarray = None,
+                          perturb_matrix_prior: np.ndarray = None,
                           if_control_key: str = 'if_control',
                           batch_key: str = 'batch',
                           run_with_matlab: bool = False) -> None:
@@ -286,7 +286,7 @@ class AbstractDSPIN(ABC):
             List of ordered sample identifiers. Default is None.
         prior_network : np.ndarray, optional
             Binary matrix of preferred network connectivity from prior knowledge. Default is None.
-        perturb_matrix : np.ndarray, optional
+        perturb_matrix_prior : np.ndarray, optional
             Matrix of putative relative responses to control samples. Default is None.
         if_control_key : str, optional
             Column name in `adata.obs` indicating whether a sample is a control. Default is 'if_control'.
@@ -338,7 +338,7 @@ class AbstractDSPIN(ABC):
             train_dat['j_prior_mask'] = prior_network
             train_dat['lambda_l1_j_prior_mask'] = 0.01
 
-        if perturb_matrix is not None:
+        if perturb_matrix_prior is not None:
             if if_control_key not in self.adata.obs.columns:
                 raise ValueError(f"Column '{if_control_key}' not found in adata.obs.")
             if batch_key not in self.adata.obs.columns:
@@ -351,7 +351,7 @@ class AbstractDSPIN(ABC):
             if_control = np.array([sample_to_control[sample] for sample in sample_list])
             batch_index = np.array([sample_to_batch[sample] for sample in sample_list])
 
-            train_dat['perturb_matrix'] = perturb_matrix
+            train_dat['perturb_matrix'] = perturb_matrix_prior
             train_dat['if_control'] = if_control
             train_dat['batch_index'] = batch_index
             train_dat['lambda_l2_h_rela_prior'] = 0.5
