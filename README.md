@@ -1,6 +1,6 @@
 # DSPIN
 
-Tutorial, code and examples of the D-SPIN framework for the preprint "D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response" ([bioRxiv](https://www.biorxiv.org/content/10.1101/2023.04.19.537364))
+Tutorial, code and examples of the D-SPIN framework for the paper "D-SPIN constructs regulatory network models from scRNA-seq that reveal organizing principles of perturbation response" ([Cell](https://doi.org/10.1016/j.cell.2026.04.028))
 
 <div align="center">
   <img src="figure/readme/Overview_20251110.png" width="800">
@@ -82,7 +82,7 @@ model.network_inference(
     directed=True,
     # optional priors / constraints:
     # sample_list_ordered=None,
-    # perturb_matrix=None,   # shape: (n_genes, n_samples)
+    # perturb_matrix_prior=None,  # shape: (n_genes, n_samples)
     # prior_network=None,    # binary matrix of likely edges (e.g., motif/ATAC prior)
     run_with_matlab=False,
     params={'stepsz': 0.05, 'lambda_l1_j': 0.01}
@@ -103,7 +103,7 @@ model.response_relative_to_control(
 - `num_spin=adata.shape[1]` - gene-level network  
 - `directed=True` - only supported with `pseudo_likelihood`  
 - `prior_network` (optional) - prior knowledge on network edges (e.g., TF–motif binding, ATAC-seq data)  
-- `perturb_matrix` (optional) - prior on direct perturbation targets (e.g., Perturb-seq)  
+- `perturb_matrix_prior` (optional) - prior on direct perturbation targets (e.g., Perturb-seq)  
 - `run_with_matlab=True` - write variables to `save_path` for MATLAB inference on large datasets  
 
 ---
@@ -226,7 +226,7 @@ dp.plot_response_heatmap(
 
 ## References
 
-1. Jiang, Jialong, et al. "D-SPIN constructs gene regulatory network models from multiplexed scRNA-seq data revealing organizing principles of cellular perturbation response." bioRxiv (2023).
+1. Jiang, Jialong, et al. "D-SPIN constructs regulatory network models from scRNA-seq that reveal organizing principles of perturbation response." Cell 189(13):4159-4184.e35 (2026).
 
 2. Jiang, Jialong, and Thomson, Matt. "A guide to D-SPIN: constructing regulatory network models from single-cell RNA-seq perturbation data." bioRxiv (2025).
 
